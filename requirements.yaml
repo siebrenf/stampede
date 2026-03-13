@@ -1,0 +1,26 @@
+name: stamp
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - adjusttext
+  - anndata
+  - h5py
+  - matplotlib
+  - mygene
+  - natsort
+  - numpy
+  - pandas <3  # anndata 0.12 cannot handle string columns
+  - pydeseq2
+  - python >=3.12  # f-strings
+  - scanpy
+  - scikit-learn
+  - scipy
+  - seaborn
+  - statsmodels
+optional_dependencies:
+  test:
+    - black
+    - isort
+    - ipykernel
+    - pytest

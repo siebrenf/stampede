@@ -1,0 +1,2 @@
+# Unnamed stamp processing package
+
