@@ -279,6 +279,152 @@ def plot_fov_edge_distances(
     return fig, axs
 
 
+def plot_correlations(
+        adata,
+        xcolumn,
+        ycolumn,
+        log1p_xcolumn=False,
+        log1p_ycolumn=False,
+        color_xcolumn=None,
+        color_ycolumn=None,
+        cmap_2d=None,
+        bins_1d=50,
+        bins_2d=None,
+        stat=None,
+        figsize=(8, 7),
+        subplot_kwargs=None,
+        plot_kwargs=None,
+):
+    if cmap_2d is None:
+        cmap_2d = "Blues"
+    if bins_1d is None:
+        bins_1d = "auto"
+    if bins_2d is None:
+        bins_2d = "auto"
+    if stat is None:
+        stat = "percent"
+    if subplot_kwargs is None:
+        subplot_kwargs = {}
+    if plot_kwargs is None:
+        plot_kwargs = {}
+
+    fig, axs = plt.subplots(
+        nrows=2,
+        ncols=3,
+        gridspec_kw={
+            'width_ratios': [1, 1, 0.05],
+            'height_ratios': [1, 1],
+            #             'wspace': 0,
+            #             'hspace': 0,
+        },
+        constrained_layout=True,
+        figsize=figsize,
+        **subplot_kwargs,
+    )
+    # fig.suptitle(f"Distributions of cell distances to the edge of the camera's FOV ({x_px}x{y_px} pixels)")
+
+    y = adata.obs[ycolumn]
+    ylabel = ycolumn
+    if log1p_ycolumn:
+        y = np.log1p(y)
+        ylabel = f"log1p({ycolumn})"
+    sns.histplot(
+        y=y,
+        bins=bins_1d,
+        stat=stat,
+        color=color_ycolumn,
+        ax=axs[0, 0],
+        alpha=0.5,
+    )
+    axs[0, 0].invert_xaxis()
+    axs[0, 0].yaxis.tick_right()
+    axs[0, 0].xaxis.tick_top()
+    axs[0, 0].xaxis.set_label_position("top")
+    # axs[0, 0].yaxis.set_label_position("right")
+    axs[0, 0].set_ylabel(ylabel)
+
+    x = adata.obs[xcolumn]
+    xlabel = xcolumn
+    if log1p_xcolumn:
+        x = np.log1p(x)
+        xlabel = f"log1p({xcolumn})"
+    sns.histplot(
+        x=x,
+        bins=bins_1d,
+        stat=stat,
+        color=color_xcolumn,
+        ax=axs[1, 1],
+        alpha=0.5,
+    )
+    axs[1, 1].invert_yaxis()
+    axs[1, 1].xaxis.tick_top()
+    axs[1, 1].yaxis.tick_right()
+    axs[1, 1].yaxis.set_label_position("right")
+    #     axs[1, 1].set_xlabel(None)
+    axs[1, 1].set_xlabel(xlabel)
+
+    sns.histplot(
+        x=x,
+        y=y,
+        bins=bins_2d,
+        stat=stat,
+        cmap=cmap_2d,
+        cbar=False,
+        ax=axs[0, 1],
+    )
+    axs[0, 1].set_xlabel(None)
+    axs[0, 1].set_ylabel(None)
+    #     axs[0, 1].set_xlabel(xlabel)
+    #     axs[0, 1].xaxis.set_label_position("top")
+    #     axs[0, 1].set_ylabel(ylabel)
+    #     axs[0, 1].yaxis.set_label_position("right")
+    axs[0, 1].get_xaxis().set_ticklabels([])
+    axs[0, 1].get_yaxis().set_ticklabels([])
+    #     axs[0, 1].get_xaxis().set_visible(False)
+    #     axs[0, 1].get_yaxis().set_visible(False)
+
+    # colormap
+    norm = Normalize(vmin=min(y.min(), x.min()), vmax=max(y.max(), x.max()))
+    ColorbarBase(axs[0, 2], cmap=cmap_2d, norm=norm)
+    cbar_label = "Number of cells"
+    if log1p_xcolumn and log1p_ycolumn:
+        cbar_label = "log1p(cells)"
+    axs[0, 2].set_ylabel(cbar_label)
+
+    # hide empty subfigs
+    axs[1, 0].set_axis_off()
+    axs[1, 2].set_axis_off()
+
+    return fig, axs
+
+
+def plot_avg_per_pixel(adata, col):
+    df = adata.obs[
+        [col, 'CenterX_local_px', 'CenterY_local_px']
+    ].groupby(
+        ['CenterX_local_px', 'CenterY_local_px']
+    ).mean().reset_index()
+
+    fig, ax = plt.subplots(figsize=(20, 20))
+    scatter = ax.scatter(
+        df['CenterX_local_px'],
+        df['CenterY_local_px'],
+        c=df[col],
+        s=1,
+        marker='s',  # 's' is square
+        cmap='viridis',
+    )
+    cbar = fig.colorbar(scatter, ax=ax)
+    cbar.set_label(f"Average {col} per coordinate")
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    n = len(adata.uns['fov_metadata']["slide-fov"].unique())
+    ax.set_title(f'Average {col} per pixel over {n} FOVs')
+    ax.set_xlim(0, adata.uns['fov_dims_px']["x"])
+    ax.set_ylim(0, adata.uns['fov_dims_px']["y"])
+    return fig, ax
+
+
 def violin(
     adata: ad.anndata,
     keys: str | list,
