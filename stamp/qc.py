@@ -398,30 +398,109 @@ def plot_correlations(
     return fig, axs
 
 
-def plot_avg_per_pixel(adata, col):
-    df = adata.obs[
-        [col, 'CenterX_local_px', 'CenterY_local_px']
-    ].groupby(
-        ['CenterX_local_px', 'CenterY_local_px']
-    ).mean().reset_index()
+def plot_avg_per_pixel(
+        adata,
+        column,
+        fill_cell_area=False,
+        log1p=False,
+        cmap=None,
+        background_color=None,
+        figsize=(15, 15),
+        subplot_kwargs=None,
+        plot_kwargs=None,
+):
+    """
+    Plot the average values of the given column over all FOVs.
+    Color's the cell's center pixel, unless fill_cell_area is set to True (slow).
 
-    fig, ax = plt.subplots(figsize=(20, 20))
-    scatter = ax.scatter(
-        df['CenterX_local_px'],
-        df['CenterY_local_px'],
-        c=df[col],
-        s=1,
-        marker='s',  # 's' is square
-        cmap='viridis',
+    Args:
+        adata: an adata object
+        column: a numeric column in adata.obs
+        fill_cell_area: distribute the column value over all pixels covered by the cell, assuming square cells (default: False)
+        log1p: normalize the final values per pixel using np.log1p
+        cmap: colormap (default: "gist_rainbow")
+        background_color: color for pixels with 0 values (default: "black")
+        figsize: figure size
+        subplot_kwargs: kwargs passed to plt.subplot
+        plot_kwargs: kwargs passed to the main plotting function
+    """
+    if cmap is None:
+        cmap = "gist_rainbow"
+    if background_color is None:
+        background_color = "black"
+    if subplot_kwargs is None:
+        subplot_kwargs = {}
+    if plot_kwargs is None:
+        plot_kwargs = {}
+
+    # create a 2D array with the average values
+    x_max = adata.uns['fov_dims_px']["x"]
+    y_max = adata.uns['fov_dims_px']["y"]
+    grid = np.full((y_max, x_max), 0.0)
+    if fill_cell_area is False:
+        # Group and average per coordinate
+        df = (
+            adata.obs[[column, 'CenterX_local_px', 'CenterY_local_px']]
+            .groupby(['CenterX_local_px', 'CenterY_local_px'])
+            .mean()
+            .reset_index()
+        )
+        grid[df['CenterY_local_px'], df['CenterX_local_px']] = df[column]
+    else:
+        grid_n = grid.copy()
+        for _, row in adata.obs.iterrows():
+            # divide the column value over the area of the cell
+            val = row[column] / (row['Width'] * row['Height'])  # row['Area']
+
+            # add the normalized value to all pixels
+            half_w = row['Width'] // 2
+            half_h = row['Height'] // 2
+            x_start = max(row['CenterX_local_px'] - half_w, 0)
+            x_end = min(row['CenterX_local_px'] + half_w + 1, x_max)
+            y_start = max(row['CenterY_local_px'] - half_h, 0)
+            y_end = min(row['CenterY_local_px'] + half_h + 1, y_max)
+            grid[y_start:y_end, x_start:x_end] += val
+
+            # track the number of cells covering each pixel
+            grid_n[y_start:y_end, x_start:x_end] += 1
+
+        # average the value over the number of cells
+        np.clip(grid_n, min=1, out=grid_n)
+        grid = grid / grid_n
+    if log1p:
+        grid = np.log1p(grid)
+
+    # assign the background_color
+    cmap = plt.get_cmap(cmap).copy()
+    cmap.set_bad(color=background_color)
+    masked_grid = np.ma.masked_where(grid == 0.0, grid)
+
+    fig, ax = plt.subplots(figsize=figsize, **subplot_kwargs)
+    n = len(adata.obs["slide-fov"].unique())
+    ax.set_title(f'Average {column} per pixel over {n} FOVs')
+    vmin = np.nanmin(grid[grid > 0])  # first real, nonzero value
+    vmax = np.nanmax(grid)
+    im = ax.imshow(
+        masked_grid,
+        cmap=cmap,
+        interpolation='none',
+        aspect='equal',
+        vmin=vmin,
+        vmax=vmax,
+        **plot_kwargs
     )
-    cbar = fig.colorbar(scatter, ax=ax)
-    cbar.set_label(f"Average {col} per coordinate")
+    ax.xaxis.set_ticks(np.arange(0, x_max, (x_max // 2000) * 100))
+    ax.yaxis.set_ticks(np.arange(0, y_max, (y_max // 2000) * 100))
+    ax.xaxis.tick_top()
+    ax.xaxis.set_label_position("top")
     ax.set_xlabel('x')
     ax.set_ylabel('y')
-    n = len(adata.uns['fov_metadata']["slide-fov"].unique())
-    ax.set_title(f'Average {col} per pixel over {n} FOVs')
-    ax.set_xlim(0, adata.uns['fov_dims_px']["x"])
-    ax.set_ylim(0, adata.uns['fov_dims_px']["y"])
+    norm = Normalize(vmin=vmin, vmax=vmax)
+    cbar = fig.colorbar(im, cmap=cmap, norm=norm, fraction=0.04, ax=ax)
+    cbar.set_label(
+        f"{'log1p(' if log1p else ''}mean({column}){')' if log1p else ''}/pixel"
+    )
+
     return fig, ax
 
 

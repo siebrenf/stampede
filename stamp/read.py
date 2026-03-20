@@ -135,10 +135,9 @@ def read_cosmx(
         # get the cell metadata from the exprMat_file, the metadata_file and the sample_df
         obs = pd.read_csv(fname, dtype=int, usecols=exprmat_md_columns, **kwargs)
         obs["slide"] = slide
+        obs["slide-fov"] = f"{slide}-" + obs["fov"].astype(str)
         index = "slide-fov-cell_ID"
-        obs[index] = (
-            f"{slide}-" + obs["fov"].astype(str) + "-" + obs["cell_ID"].astype(str)
-        )
+        obs[index] = obs["slide-fov"] + "-" + obs["cell_ID"].astype(str)
         obs = add_metadata(
             obs, files["metadata"], slide, metadata_df_columns, data_dir, **kwargs
         )
