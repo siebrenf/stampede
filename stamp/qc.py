@@ -405,7 +405,7 @@ def plot_avg_per_pixel(
         log1p=False,
         cmap=None,
         background_color=None,
-        figsize=(15, 15),
+        figsize=(20, 15),
         subplot_kwargs=None,
         plot_kwargs=None,
 ):
@@ -475,33 +475,67 @@ def plot_avg_per_pixel(
     cmap.set_bad(color=background_color)
     masked_grid = np.ma.masked_where(grid == 0.0, grid)
 
-    fig, ax = plt.subplots(figsize=figsize, **subplot_kwargs)
+    fig, axs = plt.subplots(
+        nrows=1,
+        ncols=2,
+        gridspec_kw={
+            'width_ratios': [2, 1],
+        },
+        figsize=figsize,
+        **subplot_kwargs,
+    )
     n = len(adata.obs["slide-fov"].unique())
-    ax.set_title(f'Average {column} per pixel over {n} FOVs')
+    axs[0].set_title(f'Average {column} per pixel over {n} FOVs')
     vmin = np.nanmin(grid[grid > 0])  # first real, nonzero value
     vmax = np.nanmax(grid)
-    im = ax.imshow(
+    im = axs[0].imshow(
         masked_grid,
         cmap=cmap,
         interpolation='none',
-        aspect='equal',
+        # aspect='equal',
         vmin=vmin,
         vmax=vmax,
         **plot_kwargs
     )
-    ax.xaxis.set_ticks(np.arange(0, x_max, (x_max // 2000) * 100))
-    ax.yaxis.set_ticks(np.arange(0, y_max, (y_max // 2000) * 100))
-    ax.xaxis.tick_top()
-    ax.xaxis.set_label_position("top")
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
+    axs[0].set_box_aspect(1)
+    axs[0].xaxis.set_ticks(np.arange(0, x_max, (x_max // 2000) * 100))
+    axs[0].yaxis.set_ticks(np.arange(0, y_max, (y_max // 2000) * 100))
+    axs[0].xaxis.tick_top()
+    axs[0].xaxis.set_tick_params(rotation=45)
+    axs[0].xaxis.set_label_position("top")
+    axs[0].set_xlabel('x')
+    axs[0].set_ylabel('y')
+
+    # colorbar
     norm = Normalize(vmin=vmin, vmax=vmax)
-    cbar = fig.colorbar(im, cmap=cmap, norm=norm, fraction=0.04, ax=ax)
-    cbar.set_label(
-        f"{'log1p(' if log1p else ''}mean({column}){')' if log1p else ''}/pixel"
+    label = f"{'log1p(' if log1p else ''}mean({column}){')' if log1p else ''}/pixel"
+    fig.colorbar(
+        im,
+        cmap=cmap,
+        norm=norm,
+        ax=axs[0],
+        location="bottom",
+        # orientation='horizontal',
+        fraction=0.025,
+        pad=0.005,
+        label=label,
     )
 
-    return fig, ax
+    # Lineplot
+    axs[1].set_title(f'Sum of values per row/column')
+    x_sum = np.sum(grid, axis=0)
+    y_sum = np.sum(grid, axis=1)
+    max_sum = max(max(y_sum), max(x_sum))
+    axs[1].set_xlim(-x_max * 0.02, x_max * 1.02)
+    axs[1].set_ylim(-max_sum * 0.02, max_sum * 1.02)
+    axs[1].plot(x_sum, label="x")
+    axs[1].plot(y_sum, label="y")
+    axs[1].set_box_aspect(1)
+    axs[1].set_ylabel("sum(values)")
+    axs[1].set_xlabel("axis coordinate")
+    axs[1].legend()
+
+    return fig, axs
 
 
 def violin(
