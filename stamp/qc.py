@@ -1,5 +1,4 @@
 import itertools
-import math
 import os
 from collections.abc import Iterable
 
@@ -7,6 +6,7 @@ import anndata as ad
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 import seaborn as sns
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.colors import Normalize
@@ -280,20 +280,20 @@ def plot_fov_edge_distances(
 
 
 def plot_correlations(
-        adata,
-        xcolumn,
-        ycolumn,
-        log1p_xcolumn=False,
-        log1p_ycolumn=False,
-        color_xcolumn=None,
-        color_ycolumn=None,
-        cmap_2d=None,
-        bins_1d=50,
-        bins_2d=None,
-        stat=None,
-        figsize=(8, 7),
-        subplot_kwargs=None,
-        plot_kwargs=None,
+    adata,
+    xcolumn,
+    ycolumn,
+    log1p_xcolumn=False,
+    log1p_ycolumn=False,
+    color_xcolumn=None,
+    color_ycolumn=None,
+    cmap_2d=None,
+    bins_1d=50,
+    bins_2d=None,
+    stat=None,
+    figsize=(8, 7),
+    subplot_kwargs=None,
+    plot_kwargs=None,
 ):
     if cmap_2d is None:
         cmap_2d = "Blues"
@@ -312,16 +312,15 @@ def plot_correlations(
         nrows=2,
         ncols=3,
         gridspec_kw={
-            'width_ratios': [1, 1, 0.05],
-            'height_ratios': [1, 1],
-            #             'wspace': 0,
-            #             'hspace': 0,
+            "width_ratios": [1, 1, 0.05],
+            "height_ratios": [1, 1],
+            # "wspace": 0,
+            # "hspace": 0,
         },
         constrained_layout=True,
         figsize=figsize,
         **subplot_kwargs,
     )
-    # fig.suptitle(f"Distributions of cell distances to the edge of the camera's FOV ({x_px}x{y_px} pixels)")
 
     y = adata.obs[ycolumn]
     ylabel = ycolumn
@@ -360,7 +359,7 @@ def plot_correlations(
     axs[1, 1].xaxis.tick_top()
     axs[1, 1].yaxis.tick_right()
     axs[1, 1].yaxis.set_label_position("right")
-    #     axs[1, 1].set_xlabel(None)
+    # axs[1, 1].set_xlabel(None)
     axs[1, 1].set_xlabel(xlabel)
 
     sns.histplot(
@@ -374,14 +373,14 @@ def plot_correlations(
     )
     axs[0, 1].set_xlabel(None)
     axs[0, 1].set_ylabel(None)
-    #     axs[0, 1].set_xlabel(xlabel)
-    #     axs[0, 1].xaxis.set_label_position("top")
-    #     axs[0, 1].set_ylabel(ylabel)
-    #     axs[0, 1].yaxis.set_label_position("right")
+    # axs[0, 1].set_xlabel(xlabel)
+    # axs[0, 1].xaxis.set_label_position("top")
+    # axs[0, 1].set_ylabel(ylabel)
+    # axs[0, 1].yaxis.set_label_position("right")
     axs[0, 1].get_xaxis().set_ticklabels([])
     axs[0, 1].get_yaxis().set_ticklabels([])
-    #     axs[0, 1].get_xaxis().set_visible(False)
-    #     axs[0, 1].get_yaxis().set_visible(False)
+    # axs[0, 1].get_xaxis().set_visible(False)
+    # axs[0, 1].get_yaxis().set_visible(False)
 
     # colormap
     norm = Normalize(vmin=min(y.min(), x.min()), vmax=max(y.max(), x.max()))
@@ -399,15 +398,15 @@ def plot_correlations(
 
 
 def plot_avg_per_pixel(
-        adata,
-        column,
-        fill_cell_area=False,
-        log1p=False,
-        cmap=None,
-        background_color=None,
-        figsize=(20, 15),
-        subplot_kwargs=None,
-        plot_kwargs=None,
+    adata,
+    column,
+    fill_cell_area=False,
+    log1p=False,
+    cmap=None,
+    background_color=None,
+    figsize=(20, 15),
+    subplot_kwargs=None,
+    plot_kwargs=None,
 ):
     """
     Plot the average values of the given column over all FOVs.
@@ -434,31 +433,31 @@ def plot_avg_per_pixel(
         plot_kwargs = {}
 
     # create a 2D array with the average values
-    x_max = adata.uns['fov_dims_px']["x"]
-    y_max = adata.uns['fov_dims_px']["y"]
+    x_max = adata.uns["fov_dims_px"]["x"]
+    y_max = adata.uns["fov_dims_px"]["y"]
     grid = np.full((y_max, x_max), 0.0)
     if fill_cell_area is False:
         # Group and average per coordinate
         df = (
-            adata.obs[[column, 'CenterX_local_px', 'CenterY_local_px']]
-            .groupby(['CenterX_local_px', 'CenterY_local_px'])
+            adata.obs[[column, "CenterX_local_px", "CenterY_local_px"]]
+            .groupby(["CenterX_local_px", "CenterY_local_px"])
             .mean()
             .reset_index()
         )
-        grid[df['CenterY_local_px'], df['CenterX_local_px']] = df[column]
+        grid[df["CenterY_local_px"], df["CenterX_local_px"]] = df[column]
     else:
         grid_n = grid.copy()
         for _, row in adata.obs.iterrows():
             # divide the column value over the area of the cell
-            val = row[column] / (row['Width'] * row['Height'])  # row['Area']
+            val = row[column] / (row["Width"] * row["Height"])  # row['Area']
 
             # add the normalized value to all pixels
-            half_w = row['Width'] // 2
-            half_h = row['Height'] // 2
-            x_start = max(row['CenterX_local_px'] - half_w, 0)
-            x_end = min(row['CenterX_local_px'] + half_w + 1, x_max)
-            y_start = max(row['CenterY_local_px'] - half_h, 0)
-            y_end = min(row['CenterY_local_px'] + half_h + 1, y_max)
+            half_w = row["Width"] // 2
+            half_h = row["Height"] // 2
+            x_start = max(row["CenterX_local_px"] - half_w, 0)
+            x_end = min(row["CenterX_local_px"] + half_w + 1, x_max)
+            y_start = max(row["CenterY_local_px"] - half_h, 0)
+            y_end = min(row["CenterY_local_px"] + half_h + 1, y_max)
             grid[y_start:y_end, x_start:x_end] += val
 
             # track the number of cells covering each pixel
@@ -479,23 +478,23 @@ def plot_avg_per_pixel(
         nrows=1,
         ncols=2,
         gridspec_kw={
-            'width_ratios': [2, 1],
+            "width_ratios": [2, 1],
         },
         figsize=figsize,
         **subplot_kwargs,
     )
     n = len(adata.obs["slide-fov"].unique())
-    axs[0].set_title(f'Average {column} per pixel over {n} FOVs')
+    axs[0].set_title(f"Average {column} per pixel over {n} FOVs")
     vmin = np.nanmin(grid[grid > 0])  # first real, nonzero value
     vmax = np.nanmax(grid)
     im = axs[0].imshow(
         masked_grid,
         cmap=cmap,
-        interpolation='none',
+        interpolation="none",
         # aspect='equal',
         vmin=vmin,
         vmax=vmax,
-        **plot_kwargs
+        **plot_kwargs,
     )
     axs[0].set_box_aspect(1)
     axs[0].xaxis.set_ticks(np.arange(0, x_max, (x_max // 2000) * 100))
@@ -503,8 +502,8 @@ def plot_avg_per_pixel(
     axs[0].xaxis.tick_top()
     axs[0].xaxis.set_tick_params(rotation=45)
     axs[0].xaxis.set_label_position("top")
-    axs[0].set_xlabel('x')
-    axs[0].set_ylabel('y')
+    axs[0].set_xlabel("x")
+    axs[0].set_ylabel("y")
 
     # colorbar
     norm = Normalize(vmin=vmin, vmax=vmax)
@@ -522,7 +521,7 @@ def plot_avg_per_pixel(
     )
 
     # Lineplot
-    axs[1].set_title(f'Sum of values per row/column')
+    axs[1].set_title(f"Sum of values per row/column")
     x_sum = np.sum(grid, axis=0)
     y_sum = np.sum(grid, axis=1)
     max_sum = max(max(y_sum), max(x_sum))
@@ -713,70 +712,92 @@ def plot_ncell_per_condition(
 
 def plot_value_distribution(
     adata,
-    max_1s: int = 10,
+    layer=None,
+    min_quantile=0,
+    max_quantile=0.95,
     subplot_kwargs=None,
     barplot_kwargs=None,
 ):
     """
-    Plot the number of occurences of each value in the dataset.
+    Plot the number of occurrences of values in the dataset.
 
     Args:
         adata: an adata object.
-        max_1s: the maximum number of consecutive values with 10 or fewer occurences.
     """
+    if layer is None:
+        array = adata.X
+    else:
+        array = adata.layers[layer]
+    if isinstance(array, sp.csr_matrix):
+        array = array.toarray()
     if subplot_kwargs is None:
         subplot_kwargs = {}
     if barplot_kwargs is None:
         barplot_kwargs = {}
 
-    values, counts = np.unique(adata.X.toarray(), return_counts=True)
+    values, counts = np.unique(array, return_counts=True, sorted=True)
+    log_counts = np.log10(counts)
+    x_min = np.quantile(values, min_quantile)
+    x_max = np.quantile(values, max_quantile)
+    x_pad = (x_max - x_min) * 0.02
+
     fig, ax = plt.subplots(**subplot_kwargs)
-    n = 0
-    x_max = max(values)
-    for x, y in zip(values, np.log10(counts)):
-        ax.bar(x=x, height=y, **barplot_kwargs)
-        # stop plotting if the y-value stays at or below 1
-        if math.ceil(y) <= 1:
-            if n == max_1s:
-                x_max = x
-                break
-            n += 1
+    x_prev = None
+    for x, y in zip(values, log_counts):
+        if x < x_min:
+            continue
+        if x > x_max:
+            break
+        if x_prev is None:
+            width = values[1] - values[0]
         else:
-            n = 0
+            width = x - x_prev
+        x_prev = x
+        ax.bar(x=x, height=y, width=width, **barplot_kwargs)
     ax.set_title("Distributions of raw values in the dataset")
-    ax.set_xlim(-2, x_max + 2)
+    ax.set_xlim(x_min - x_pad, x_max + x_pad)
     ax.set_xlabel("value")
-    ax.set_ylabel("log10(occurences)")
+    ax.set_ylabel("log10(occurrences)")
+
     return fig, ax
 
 
 def plot_distribution(
     adata,
     column,
-    axis=0,
+    axis=None,
     min_quantile=0,
     max_quantile=0.95,
-    xpad=1,
     subplot_kwargs=None,
     plot_kwargs=None,
 ):
+    if axis is None:
+        if column in adata.obs:
+            axis = 0
+        elif column in adata.var:
+            axis = 1
+        else:
+            raise IndexError(f"{column=} not found in adata.obs or var")
+    if axis == 0:
+        series = adata.obs[column]
+        unit = "cell"
+    elif axis == 1:
+        series = adata.var[column]
+        unit = "gene"
+    else:
+        raise IndexError("Axis must be None, 0 or 1")
     if subplot_kwargs is None:
         subplot_kwargs = {}
     if plot_kwargs is None:
         plot_kwargs = {}
-    if axis == 0:
-        series = adata.obs[column]
-        axis = "cell"
-    elif axis == 1:
-        series = adata.var[column]
-        axis = "gene"
-    else:
-        raise IndexError("Axis must be 0 or 1")
+
+    x_min = series.quantile(min_quantile)
+    x_max = series.quantile(max_quantile)
+    x_pad = (x_max - x_min) * 0.02
+
     fig, ax = plt.subplots(**subplot_kwargs)
     sns.histplot(series, ax=ax, **plot_kwargs)
-    ax.set_xlim(
-        series.quantile(min_quantile) - xpad,
-        series.quantile(max_quantile) + xpad,
-    )
-    ax.set_title(f"Distribution of {column} per {axis}")
+    ax.set_xlim(x_min - x_pad, x_max + x_pad)
+    ax.set_title(f"Distribution of {column} per {unit}")
+
     return fig, ax
