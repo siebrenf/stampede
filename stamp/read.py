@@ -7,10 +7,8 @@ import pandas as pd
 import scipy.sparse as sp
 
 from .config import (
-    adata_dir,
     exprmat_md_columns,
     metadata_md_columns,
-    sample_md_columns,
 )
 
 
@@ -129,7 +127,7 @@ def read_cosmx(
         columns = pd.read_csv(fname, dtype=int, nrows=0).columns.to_list()
         for col in exprmat_md_columns:
             if col not in columns:
-                raise ValueError(f"column={col} not found in {files["exprmat"]}")
+                raise ValueError(f"column={col} not found in {files['exprmat']}")
             columns.remove(col)
 
         # get the cell metadata from the exprMat_file, the metadata_file and the sample_df

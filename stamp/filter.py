@@ -4,7 +4,7 @@ import operator
 
 def genes_signal_to_noise(adata, mult=1):
     """
-    Filter for signal to noise;
+    Filter for signal-to-noise;
     Approach from https://doi.org/10.1038/s41467-025-64990-y
     Wang et al. Systematic benchmarking of imaging spatial
     transcriptomics platforms in FFPE tissues. Nat Com, 2025
