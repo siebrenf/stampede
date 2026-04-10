@@ -55,30 +55,38 @@ def slide_qc_data(adata: ad.anndata, slides: dict, data_dir: str = None):
     ).set_index("slide-fov")
 
     # Add additional metadata columns
-    fov_df["nCounts"] = adata.obs.groupby("slide-fov",observed=True)["nCount_RNA"].sum()
+    fov_df["nCounts"] = adata.obs.groupby("slide-fov", observed=True)[
+        "nCount_RNA"
+    ].sum()
     fov_df = pd.merge(
         left=fov_df,
         right=adata.obs["slide-fov"].value_counts().rename("nCell"),
         on="slide-fov",
     )
     fov_df["meanCountsPerCell"] = fov_df["nCounts"] / fov_df["nCell"]
-    fov_df["nCount_negprobes"] = adata.obs.groupby("slide-fov",observed=True)[
+    fov_df["nCount_negprobes"] = adata.obs.groupby("slide-fov", observed=True)[
         "nCount_negprobes"
     ].sum()
     fov_df["mean_NegProbe-CountsPerCell"] = fov_df["nCount_negprobes"] / fov_df["nCell"]
-    fov_df["nCount_falsecode"] = adata.obs.groupby("slide-fov",observed=False)[
+    fov_df["nCount_falsecode"] = adata.obs.groupby("slide-fov", observed=False)[
         "nCount_falsecode"
     ].sum()
     fov_df["mean_FalseCode-CountsPerCell"] = (
         fov_df["nCount_falsecode"] / fov_df["nCell"]
     )
     fov_df["meanCellSize"] = (
-        adata.obs.groupby("slide-fov",observed=False)["Area.um2"].sum() / fov_df["nCell"]
+        adata.obs.groupby("slide-fov", observed=False)["Area.um2"].sum()
+        / fov_df["nCell"]
     )
-    slidefov2passfail = adata.obs.groupby("slide-fov",observed=False)["qcFlagsFOV"].first().to_dict()
+    slidefov2passfail = (
+        adata.obs.groupby("slide-fov", observed=False)["qcFlagsFOV"].first().to_dict()
+    )
     fov_df = fov_df.reset_index()
     fov_df["Failed_AtoMX_QC"] = (
-        fov_df["slide-fov"].replace(slidefov2passfail).replace({"Pass": 0, "Fail": 1}).astype(int)
+        fov_df["slide-fov"]
+        .replace(slidefov2passfail)
+        .replace({"Pass": 0, "Fail": 1})
+        .astype(int)
     )
     adata.uns["fov_metadata"] = fov_df
 
@@ -133,12 +141,12 @@ def slide_qc_plots(adata, columns=None):
     Manually add columns to the dataframe for additional plots.
     """
     fov_df = adata.uns["fov_metadata"]
-    required_cols = ["slide","x","y"]
+    required_cols = ["slide", "x", "y"]
     for col in required_cols:
         if col not in fov_df.columns:
             raise ValueError(f"column={col} is required in adata.obs")
     if columns is not None:
-        fov_df = fov_df[columns + ["slide","x","y"]]
+        fov_df = fov_df[columns + ["slide", "x", "y"]]
 
     fig_axs_list = []
     # total number of slides
@@ -152,7 +160,9 @@ def slide_qc_plots(adata, columns=None):
         qc_param = col
         norm = Normalize(vmin=fov_df[qc_param].min(), vmax=fov_df[qc_param].max())
 
-        fig, axs = plt.subplots(nrows=1, ncols=ncols, figsize=(3*ncols,6), sharex=True, sharey=True)
+        fig, axs = plt.subplots(
+            nrows=1, ncols=ncols, figsize=(3 * ncols, 6), sharex=True, sharey=True
+        )
         if not isinstance(axs, Iterable):
             axs = [axs]
         # fig.suptitle(qc_param, y=0.875)
@@ -281,20 +291,20 @@ def plot_fov_edge_distances(
 
 
 def plot_correlations(
-        adata,
-        xcolumn,
-        ycolumn,
-        log1p_xcolumn=False,
-        log1p_ycolumn=False,
-        color_xcolumn=None,
-        color_ycolumn=None,
-        cmap_2d=None,
-        bins_1d=50,
-        bins_2d=None,
-        stat=None,
-        figsize=(8, 7),
-        subplot_kwargs=None,
-        plot_kwargs=None,
+    adata,
+    xcolumn,
+    ycolumn,
+    log1p_xcolumn=False,
+    log1p_ycolumn=False,
+    color_xcolumn=None,
+    color_ycolumn=None,
+    cmap_2d=None,
+    bins_1d=50,
+    bins_2d=None,
+    stat=None,
+    figsize=(8, 7),
+    subplot_kwargs=None,
+    plot_kwargs=None,
 ):
     if cmap_2d is None:
         cmap_2d = "Blues"
@@ -313,8 +323,8 @@ def plot_correlations(
         nrows=2,
         ncols=3,
         gridspec_kw={
-            'width_ratios': [1, 1, 0.05],
-            'height_ratios': [1, 1],
+            "width_ratios": [1, 1, 0.05],
+            "height_ratios": [1, 1],
             #             'wspace': 0,
             #             'hspace': 0,
         },
@@ -400,15 +410,15 @@ def plot_correlations(
 
 
 def plot_avg_per_pixel(
-        adata,
-        column,
-        fill_cell_area=False,
-        log1p=False,
-        cmap=None,
-        background_color=None,
-        figsize=(20, 15),
-        subplot_kwargs=None,
-        plot_kwargs=None,
+    adata,
+    column,
+    fill_cell_area=False,
+    log1p=False,
+    cmap=None,
+    background_color=None,
+    figsize=(20, 15),
+    subplot_kwargs=None,
+    plot_kwargs=None,
 ):
     """
     Plot the average values of the given column over all FOVs.
@@ -435,31 +445,31 @@ def plot_avg_per_pixel(
         plot_kwargs = {}
 
     # create a 2D array with the average values
-    x_max = adata.uns['fov_dims_px']["x"]
-    y_max = adata.uns['fov_dims_px']["y"]
+    x_max = adata.uns["fov_dims_px"]["x"]
+    y_max = adata.uns["fov_dims_px"]["y"]
     grid = np.full((y_max, x_max), 0.0)
     if fill_cell_area is False:
         # Group and average per coordinate
         df = (
-            adata.obs[[column, 'CenterX_local_px', 'CenterY_local_px']]
-            .groupby(['CenterX_local_px', 'CenterY_local_px'],observed=True)
+            adata.obs[[column, "CenterX_local_px", "CenterY_local_px"]]
+            .groupby(["CenterX_local_px", "CenterY_local_px"], observed=True)
             .mean()
             .reset_index()
         )
-        grid[df['CenterY_local_px'], df['CenterX_local_px']] = df[column]
+        grid[df["CenterY_local_px"], df["CenterX_local_px"]] = df[column]
     else:
         grid_n = grid.copy()
         for _, row in adata.obs.iterrows():
             # divide the column value over the area of the cell
-            val = row[column] / (row['Width'] * row['Height'])  # row['Area']
+            val = row[column] / (row["Width"] * row["Height"])  # row['Area']
 
             # add the normalized value to all pixels
-            half_w = row['Width'] // 2
-            half_h = row['Height'] // 2
-            x_start = max(row['CenterX_local_px'] - half_w, 0)
-            x_end = min(row['CenterX_local_px'] + half_w + 1, x_max)
-            y_start = max(row['CenterY_local_px'] - half_h, 0)
-            y_end = min(row['CenterY_local_px'] + half_h + 1, y_max)
+            half_w = row["Width"] // 2
+            half_h = row["Height"] // 2
+            x_start = max(row["CenterX_local_px"] - half_w, 0)
+            x_end = min(row["CenterX_local_px"] + half_w + 1, x_max)
+            y_start = max(row["CenterY_local_px"] - half_h, 0)
+            y_end = min(row["CenterY_local_px"] + half_h + 1, y_max)
             grid[y_start:y_end, x_start:x_end] += val
 
             # track the number of cells covering each pixel
@@ -480,23 +490,23 @@ def plot_avg_per_pixel(
         nrows=1,
         ncols=2,
         gridspec_kw={
-            'width_ratios': [2, 1],
+            "width_ratios": [2, 1],
         },
         figsize=figsize,
         **subplot_kwargs,
     )
     n = len(adata.obs["slide-fov"].unique())
-    axs[0].set_title(f'Average {column} per pixel over {n} FOVs')
+    axs[0].set_title(f"Average {column} per pixel over {n} FOVs")
     vmin = np.nanmin(grid[grid > 0])  # first real, nonzero value
     vmax = np.nanmax(grid)
     im = axs[0].imshow(
         masked_grid,
         cmap=cmap,
-        interpolation='none',
+        interpolation="none",
         # aspect='equal',
         vmin=vmin,
         vmax=vmax,
-        **plot_kwargs
+        **plot_kwargs,
     )
     axs[0].set_box_aspect(1)
     axs[0].xaxis.set_ticks(np.arange(0, x_max, (x_max // 2000) * 100))
@@ -504,8 +514,8 @@ def plot_avg_per_pixel(
     axs[0].xaxis.tick_top()
     axs[0].xaxis.set_tick_params(rotation=45)
     axs[0].xaxis.set_label_position("top")
-    axs[0].set_xlabel('x')
-    axs[0].set_ylabel('y')
+    axs[0].set_xlabel("x")
+    axs[0].set_ylabel("y")
 
     # colorbar
     norm = Normalize(vmin=vmin, vmax=vmax)
@@ -523,7 +533,7 @@ def plot_avg_per_pixel(
     )
 
     # Lineplot
-    axs[1].set_title(f'Sum of values per row/column')
+    axs[1].set_title(f"Sum of values per row/column")
     x_sum = np.sum(grid, axis=0)
     y_sum = np.sum(grid, axis=1)
     max_sum = max(max(y_sum), max(x_sum))
