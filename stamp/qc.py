@@ -55,30 +55,38 @@ def slide_qc_data(adata: ad.anndata, slides: dict, data_dir: str = None):
     ).set_index("slide-fov")
 
     # Add additional metadata columns
-    fov_df["nCounts"] = adata.obs.groupby("slide-fov")["nCount_RNA"].sum()
+    fov_df["nCounts"] = adata.obs.groupby("slide-fov", observed=True)[
+        "nCount_RNA"
+    ].sum()
     fov_df = pd.merge(
         left=fov_df,
         right=adata.obs["slide-fov"].value_counts().rename("nCell"),
         on="slide-fov",
     )
     fov_df["meanCountsPerCell"] = fov_df["nCounts"] / fov_df["nCell"]
-    fov_df["nCount_negprobes"] = adata.obs.groupby("slide-fov")[
+    fov_df["nCount_negprobes"] = adata.obs.groupby("slide-fov", observed=True)[
         "nCount_negprobes"
     ].sum()
     fov_df["mean_NegProbe-CountsPerCell"] = fov_df["nCount_negprobes"] / fov_df["nCell"]
-    fov_df["nCount_falsecode"] = adata.obs.groupby("slide-fov")[
+    fov_df["nCount_falsecode"] = adata.obs.groupby("slide-fov", observed=False)[
         "nCount_falsecode"
     ].sum()
     fov_df["mean_FalseCode-CountsPerCell"] = (
         fov_df["nCount_falsecode"] / fov_df["nCell"]
     )
     fov_df["meanCellSize"] = (
-        adata.obs.groupby("slide-fov")["Area.um2"].sum() / fov_df["nCell"]
+        adata.obs.groupby("slide-fov", observed=False)["Area.um2"].sum()
+        / fov_df["nCell"]
     )
-    slidefov2passfail = adata.obs.groupby("slide-fov")["qcFlagsFOV"].first().to_dict()
+    slidefov2passfail = (
+        adata.obs.groupby("slide-fov", observed=False)["qcFlagsFOV"].first().to_dict()
+    )
     fov_df = fov_df.reset_index()
     fov_df["Failed_AtoMX_QC"] = (
-        fov_df["slide-fov"].replace(slidefov2passfail).replace({"Pass": 0, "Fail": 1})
+        fov_df["slide-fov"]
+        .replace(slidefov2passfail)
+        .replace({"Pass": 0, "Fail": 1})
+        .astype(int)
     )
     adata.uns["fov_metadata"] = fov_df
 
@@ -133,11 +141,12 @@ def slide_qc_plots(adata, columns=None):
     Manually add columns to the dataframe for additional plots.
     """
     fov_df = adata.uns["fov_metadata"]
-    if columns is not None:
-        fov_df = fov_df[columns]
-    for col in ["slide", "x", "y"]:
+    required_cols = ["slide", "x", "y"]
+    for col in required_cols:
         if col not in fov_df.columns:
-            raise ValueError(f"column={col} is required")
+            raise ValueError(f"column={col} is required in adata.obs")
+    if columns is not None:
+        fov_df = fov_df[columns + ["slide", "x", "y"]]
 
     fig_axs_list = []
     # total number of slides
@@ -151,7 +160,9 @@ def slide_qc_plots(adata, columns=None):
         qc_param = col
         norm = Normalize(vmin=fov_df[qc_param].min(), vmax=fov_df[qc_param].max())
 
-        fig, axs = plt.subplots(nrows=1, ncols=ncols, sharex=True, sharey=True)
+        fig, axs = plt.subplots(
+            nrows=1, ncols=ncols, figsize=(3 * ncols, 6), sharex=True, sharey=True
+        )
         if not isinstance(axs, Iterable):
             axs = [axs]
         # fig.suptitle(qc_param, y=0.875)
@@ -440,7 +451,7 @@ def plot_avg_per_pixel(
         # Group and average per coordinate
         df = (
             adata.obs[[column, "CenterX_local_px", "CenterY_local_px"]]
-            .groupby(["CenterX_local_px", "CenterY_local_px"])
+            .groupby(["CenterX_local_px", "CenterY_local_px"], observed=True)
             .mean()
             .reset_index()
         )
