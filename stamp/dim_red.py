@@ -10,7 +10,7 @@ def dim_red(
     n_dims=50,
     random_state=42,
 ):
-    """Method: TF SLI"""
+    """Term Frequency Latent Semantic Indexing"""
     X = adata.layers["binary"]
     cell_sums = adata.obs["nFeature_RNA_postfilter"].to_numpy(dtype=np.float32)
     gene_counts = adata.var["nCell_postfilter"].to_numpy(dtype=np.float32)
