@@ -5,11 +5,12 @@ import pandas as pd
 from sklearn.decomposition import TruncatedSVD
 
 
-def pca(
+def dim_red(
     adata,
     n_dims=50,
     random_state=42,
 ):
+    """Method: TF SLI"""
     X = adata.layers["binary"]
     cell_sums = adata.obs["nFeature_RNA_postfilter"].to_numpy(dtype=np.float32)
     gene_counts = adata.var["nCell_postfilter"].to_numpy(dtype=np.float32)
@@ -51,7 +52,7 @@ def scree_plot(adata):
     return fig, ax
 
 
-def plot_pca(
+def plot_dim_red(
     adata,
     color,
     cmap="tab10",

@@ -6,10 +6,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
-from .config import (
-    exprmat_md_columns,
-    metadata_md_columns,
-)
+from . import config
 
 
 def get_X(fname, columns, chunksize=50_000, verbose=True, **kwargs):
@@ -67,7 +64,7 @@ def add_metadata(obs, file_md, slide, columns=None, data_dir: str = None, **kwar
     if data_dir is None:
         data_dir = ""
     if columns:
-        for col in metadata_md_columns:
+        for col in config.get("metadata_md_columns"):
             if col not in columns:
                 columns.append(col)
     md = pd.read_csv(os.path.join(data_dir, file_md), usecols=columns, **kwargs)
@@ -78,7 +75,9 @@ def add_metadata(obs, file_md, slide, columns=None, data_dir: str = None, **kwar
 
     # if both files are sorted, we can concatenate blindly
     assert (md[index] == obs[index]).all(), "exprMat and metadata files are not sorted!"
-    obs = pd.concat([obs, md.drop(columns=metadata_md_columns + [index])], axis=1)
+    obs = pd.concat(
+        [obs, md.drop(columns=config.get("metadata_md_columns") + [index])], axis=1
+    )
     return obs
 
 
@@ -98,7 +97,8 @@ def read_cosmx(
     and concatenate the results.
 
     Args:
-        slides: a dictionary with the slide number as keys, and a dictionary as values. The value dict must contain keys "exprmat" and "metadata", with should map to matching respective files
+        slides: a dictionary with the slide number as keys, and a dictionary as values.
+          The value dict must contain keys "exprmat" and "metadata", with should map to matching respective files
         sample_df: a dataframe with sample metadata to be added to adata.obs
         adata_file: filepath to write the adata object to
         sample_df_columns: list of columns in sample_df to add to adata.obs (default: all)
@@ -125,13 +125,15 @@ def read_cosmx(
 
         # get the gene columns from the exprMat_file
         columns = pd.read_csv(fname, dtype=int, nrows=0).columns.to_list()
-        for col in exprmat_md_columns:
+        for col in config.get("exprmat_md_columns"):
             if col not in columns:
                 raise ValueError(f"column={col} not found in {files['exprmat']}")
             columns.remove(col)
 
         # get the cell metadata from the exprMat_file, the metadata_file and the sample_df
-        obs = pd.read_csv(fname, dtype=int, usecols=exprmat_md_columns, **kwargs)
+        obs = pd.read_csv(
+            fname, dtype=int, usecols=config.get("exprmat_md_columns"), **kwargs
+        )
         obs["slide"] = slide
         obs["slide-fov"] = f"{slide}-" + obs["fov"].astype(str)
         index = "slide-fov-cell_ID"
