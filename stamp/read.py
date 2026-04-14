@@ -9,83 +9,45 @@ import scipy.sparse as sp
 from . import config
 
 
-def get_X(fname, columns, chunksize=50_000, verbose=True, **kwargs):
-    sparse_blocks = []
-    i = 1
-    for chunk in pd.read_csv(
-        fname, dtype=int, usecols=columns, chunksize=chunksize, **kwargs
-    ):
-        # Convert to sparse matrix
-        sparse_blocks.append(sp.csr_matrix(chunk.values))
-        if verbose:
-            print(i * chunksize, "rows parsed")
-            i += 1
+def validate_input(slides, samples_df, data_dir=None):
+    # validate the slides dictionary
+    expected_keys = ["exprmat", "metadata", "fov_positions"]
+    for slide, d in slides.items():
+        if not isinstance(slide, int):
+            raise TypeError(
+                f"Keys for dictionary `slides` must be integer values, not {type(slide)=} (found {slide=})"
+            )
 
-    # Stack all chunks vertically
-    X = sp.vstack(sparse_blocks, format="csr")
-    if verbose:
-        print(i * chunksize, "rows parsed")
-    return X
+        for key in expected_keys:
+            if key not in d.keys():
+                raise KeyError(f"Missing {key=} in slides dictionary")
+        for filename in d.values():
+            if data_dir:
+                filename = os.path.join(data_dir, filename)
+            if not os.path.exists(filename):
+                raise FileNotFoundError(filename)
 
+    # validate the samples_df
+    for column in config["sample_md_columns"]:
+        if column not in samples_df.columns:
+            raise ValueError(f"{column=} not found in samples_df")
 
-def add_sample_df_metadata(obs, sample_df, slide, columns=None):
-    if columns is None:
-        columns = sample_df.columns.to_list()
-    if "sample" not in columns:
-        columns.append("sample")
-    if "slide" in columns:
-        columns.remove("slide")
-
-    sdf = sample_df.loc[sample_df["slide"] == slide]
-
-    start = sdf["fov_start"].to_numpy()
-    end = sdf["fov_end"].to_numpy()
-    sample = sdf["sample"].to_numpy()
-    fov = obs["fov"].to_numpy(copy=False)
-
-    # find candidate interval
-    idx = np.searchsorted(start, fov, side="right") - 1
-
-    # check if fov actually falls inside interval
-    valid = (idx >= 0) & (fov <= end[np.clip(idx, 0, None)])
-
-    # create sample column
-    result = np.empty(len(fov), dtype=object)
-    result[:] = None
-    result[valid] = sample[idx[valid]]
-    obs["sample"] = result
-
-    # merge sample_df to obs
-    obs = obs.merge(sdf[columns], on="sample", how="left")
-    return obs
-
-
-def add_metadata(obs, file_md, slide, columns=None, data_dir: str = None, **kwargs):
-    if data_dir is None:
-        data_dir = ""
-    if columns:
-        for col in config.get("metadata_md_columns"):
-            if col not in columns:
-                columns.append(col)
-    md = pd.read_csv(os.path.join(data_dir, file_md), usecols=columns, **kwargs)
-
-    # add a unique identifier
-    index = "slide-fov-cell_ID"
-    md[index] = f"{slide}-" + md["fov"].astype(str) + "-" + md["cell_ID"].astype(str)
-
-    # if both files are sorted, we can concatenate blindly
-    assert (md[index] == obs[index]).all(), "exprMat and metadata files are not sorted!"
-    obs = pd.concat(
-        [obs, md.drop(columns=config.get("metadata_md_columns") + [index])], axis=1
-    )
-    return obs
+    # validate overlap between the slides dictionary and the samples_df
+    n_slides = len(slides.keys())
+    for slide in slides:
+        if slide not in set(samples_df["slide"]):
+            if n_slides == 1:
+                samples_df["slide"] = slide
+                # print("Adding column 'slide' to the samples_df")
+            else:
+                raise ValueError(f"{slide=} not found in samples_df['slide']")
 
 
 def read_cosmx(
     slides,
-    sample_df: pd.DataFrame,
+    samples_df: pd.DataFrame,
     adata_file: str,
-    sample_df_columns: list = None,
+    samples_df_columns: list = None,
     metadata_df_columns: list = None,
     data_dir: str = None,
     overwrite: bool = True,
@@ -99,9 +61,9 @@ def read_cosmx(
     Args:
         slides: a dictionary with the slide number as keys, and a dictionary as values.
           The value dict must contain keys "exprmat" and "metadata", with should map to matching respective files
-        sample_df: a dataframe with sample metadata to be added to adata.obs
+        samples_df: a dataframe with sample metadata to be added to adata.obs
         adata_file: filepath to write the adata object to
-        sample_df_columns: list of columns in sample_df to add to adata.obs (default: all)
+        samples_df_columns: list of columns in samples_df to add to adata.obs (default: all)
         metadata_df_columns: list of columns in the metadata file to add to adata.obs (default: all)
         overwrite: overwrite existing output (default: True)
         **kwargs: keyword arguments passed to pd.read_csv
@@ -130,7 +92,7 @@ def read_cosmx(
                 raise ValueError(f"column={col} not found in {files['exprmat']}")
             columns.remove(col)
 
-        # get the cell metadata from the exprMat_file, the metadata_file and the sample_df
+        # get the cell metadata from the exprMat_file, the metadata_file and the samples_df
         obs = pd.read_csv(
             fname, dtype=int, usecols=config.get("exprmat_md_columns"), **kwargs
         )
@@ -138,10 +100,10 @@ def read_cosmx(
         obs["slide-fov"] = f"{slide}-" + obs["fov"].astype(str)
         index = "slide-fov-cell_ID"
         obs[index] = obs["slide-fov"] + "-" + obs["cell_ID"].astype(str)
-        obs = add_metadata(
+        obs = _add_metadata(
             obs, files["metadata"], slide, metadata_df_columns, data_dir, **kwargs
         )
-        obs = add_sample_df_metadata(obs, sample_df, slide, sample_df_columns)
+        obs = _add_samples_df_metadata(obs, samples_df, slide, samples_df_columns)
         obs.set_index(index, inplace=True)
 
         # convert to sparse adata object
@@ -149,7 +111,7 @@ def read_cosmx(
             # warning: Transforming to str index.
             warnings.simplefilter("ignore", ad.ImplicitModificationWarning)
             adata = ad.AnnData(
-                X=get_X(fname, columns, verbose=verbose, **kwargs),
+                X=_add_x(fname, columns, verbose=verbose, **kwargs),
                 obs=obs,
                 var=pd.DataFrame(index=columns),
             )
@@ -175,3 +137,75 @@ def read_cosmx(
         ad.experimental.concat_on_disk(adatas, adata_file)
         for f in adatas:
             os.remove(f)
+
+
+def _add_x(fname, columns, chunksize=50_000, verbose=True, **kwargs):
+    sparse_blocks = []
+    i = 1
+    for chunk in pd.read_csv(
+        fname, dtype=int, usecols=columns, chunksize=chunksize, **kwargs
+    ):
+        # Convert to sparse matrix
+        sparse_blocks.append(sp.csr_matrix(chunk.values))
+        if verbose:
+            print(i * chunksize, "rows parsed")
+            i += 1
+
+    # Stack all chunks vertically
+    X = sp.vstack(sparse_blocks, format="csr")
+    if verbose:
+        print(i * chunksize, "rows parsed")
+    return X
+
+
+def _add_samples_df_metadata(obs, samples_df, slide, columns=None):
+    if columns is None:
+        columns = samples_df.columns.to_list()
+    if "sample" not in columns:
+        columns.append("sample")
+    if "slide" in columns:
+        columns.remove("slide")
+
+    sdf = samples_df.loc[samples_df["slide"] == slide]
+
+    start = sdf["fov_start"].to_numpy()
+    end = sdf["fov_end"].to_numpy()
+    sample = sdf["sample"].to_numpy()
+    fov = obs["fov"].to_numpy(copy=False)
+
+    # find candidate interval
+    idx = np.searchsorted(start, fov, side="right") - 1
+
+    # check if fov actually falls inside interval
+    valid = (idx >= 0) & (fov <= end[np.clip(idx, 0, None)])
+
+    # create sample column
+    result = np.empty(len(fov), dtype=object)
+    result[:] = None
+    result[valid] = sample[idx[valid]]
+    obs["sample"] = result
+
+    # merge samples_df to obs
+    obs = obs.merge(sdf[columns], on="sample", how="left")
+    return obs
+
+
+def _add_metadata(obs, file_md, slide, columns=None, data_dir: str = None, **kwargs):
+    if data_dir is None:
+        data_dir = ""
+    if columns:
+        for col in config.get("metadata_md_columns"):
+            if col not in columns:
+                columns.append(col)
+    md = pd.read_csv(os.path.join(data_dir, file_md), usecols=columns, **kwargs)
+
+    # add a unique identifier
+    index = "slide-fov-cell_ID"
+    md[index] = f"{slide}-" + md["fov"].astype(str) + "-" + md["cell_ID"].astype(str)
+
+    # if both files are sorted, we can concatenate blindly
+    assert (md[index] == obs[index]).all(), "exprMat and metadata files are not sorted!"
+    obs = pd.concat(
+        [obs, md.drop(columns=config.get("metadata_md_columns") + [index])], axis=1
+    )
+    return obs

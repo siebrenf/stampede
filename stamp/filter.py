@@ -2,27 +2,15 @@ import functools
 import operator
 
 
-def genes_signal_to_noise(adata, mult=1):
-    """
-    Filter for signal-to-noise;
-    Approach from https://doi.org/10.1038/s41467-025-64990-y
-    Wang et al. Systematic benchmarking of imaging spatial
-    transcriptomics platforms in FFPE tissues. Nat Com, 2025
-
-    Calculate mean expression of negative control probes
-    and standard deviation of those means.
-    Remove genes with average expression < mean + STD of ctrl probes.
-    * Paper uses 2x STD(!)
-    """
-    means = adata.var.loc[adata.var["is_negctrl"], "meanTranscript"]
-    mean = means.mean()
-    std = means.std()
-    threshold = mean + mult * std
-    adata.var["above_noise"] = adata.var["meanTranscript"] > threshold
-
-
 def filter_genes(
-    adata, ncell_min: int = 1000, filter_columns: list = None, verbose=True
+    adata,
+    ncell_min: int = 0,
+    ncell_max=float("inf"),
+    ntranscript_min=0,
+    ntranscript_max=float("inf"),
+    signal2noise_threshold=1,
+    filter_columns: list = None,
+    verbose=True,
 ):
     """
     Filter adata.var by a set of qc_params.
@@ -35,9 +23,13 @@ def filter_genes(
         filter_columns = []
     adata.strings_to_categoricals()
 
-    ncells_filter = adata.var["nCell"] >= ncell_min
+    ncells_filter = adata.var["nCell"].between(ncell_min, ncell_max)
     filter_columns.append(ncells_filter)
-    noise_filter = adata.var["above_noise"]
+    ntranscript_filter = adata.var["nTranscript"].between(
+        ntranscript_min, ntranscript_max
+    )
+    filter_columns.append(ntranscript_filter)
+    noise_filter = adata.var["signal2noise"] > signal2noise_threshold
     filter_columns.append(noise_filter)
     negprobe_filter = ~adata.var["is_negctrl"]
     filter_columns.append(negprobe_filter)
@@ -57,12 +49,13 @@ def filter_genes(
 
 def filter_cells(
     adata,
-    max_falsecode=5,
-    max_negprobe=3,
-    min_transcripts=250,
-    max_transcripts=1500,
-    min_area=25,
-    max_area=100,
+    dist2edge_px_min=0,
+    falsecode_max=5,
+    negprobe_max=3,
+    transcripts_min=250,
+    transcripts_max=1500,
+    area_min=25,
+    area_max=100,
     filter_columns: list = None,
     verbose=True,
 ):
@@ -81,17 +74,17 @@ def filter_cells(
         filter_columns = [adata.obs[col] for col in filter_columns]
     adata.strings_to_categoricals()
 
-    falsecode_filter = ~(adata.obs["nCount_falsecode"] >= max_falsecode)
+    dist2edge_filter = adata.obs["dist2edge_px"] >= dist2edge_px_min
+    filter_columns.append(dist2edge_filter)
+    falsecode_filter = ~(adata.obs["nCount_falsecode"] >= falsecode_max)
     filter_columns.append(falsecode_filter)
-    negprobe_filter = ~(adata.obs["nCount_negprobes"] >= max_negprobe)
+    negprobe_filter = ~(adata.obs["nCount_negprobes"] >= negprobe_max)
     filter_columns.append(negprobe_filter)
-    transcript_filter = (adata.obs["nCount_RNA"] >= min_transcripts) & (
-        adata.obs["nCount_RNA"] <= max_transcripts
+    transcript_filter = adata.obs["nCount_RNA"].between(
+        transcripts_min, transcripts_max
     )
     filter_columns.append(transcript_filter)
-    area_filter = (adata.obs["Area.um2"] >= min_area) & (
-        adata.obs["Area.um2"] <= max_area
-    )
+    area_filter = adata.obs["Area.um2"].between(area_min, area_max)
     filter_columns.append(area_filter)
     internal_qc = adata.obs["qcCellsPassed"] & (adata.obs["qcFlagsFOV"] == "Pass")
     filter_columns.append(internal_qc)

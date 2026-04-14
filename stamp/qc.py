@@ -85,13 +85,13 @@ def slide_qc_data(adata: ad.anndata, slides: dict, data_dir: str = None):
     fov_df["Failed_AtoMX_QC"] = (
         fov_df["slide-fov"]
         .replace(slidefov2passfail)
-        .replace({"Pass": 0, "Fail": 1})
+        .replace({"Pass": "0", "Fail": "1"})
         .astype(int)
     )
     adata.uns["fov_metadata"] = fov_df
 
     # determine the dimensions of the camera's FOV
-    dim_x_px, dim_y_px = fov_dimensions(fov_df)
+    dim_x_px, dim_y_px = _fov_dimensions(fov_df)
     adata.uns["fov_dims_px"] = {"x": dim_x_px, "y": dim_y_px}
 
     # compute the distance of each cell to the nearest edge along the x- and y-axis
@@ -107,7 +107,68 @@ def slide_qc_data(adata: ad.anndata, slides: dict, data_dir: str = None):
         )
 
 
-def fov_dimensions(fov_df):
+def gene_qc(
+    adata,
+    signal2noise_threshold: float | Iterable = None,
+    mult: int | float = 1,
+    overwrite: bool = False,
+):
+    """
+    Add QC parameters to adata.var.
+
+    About the Signal-to-noise filter:
+        Approach from https://doi.org/10.1038/s41467-025-64990-y
+        Wang et al. "Systematic benchmarking of imaging spatial
+        transcriptomics platforms in FFPE tissues" Nat Com, 2025.
+
+        Calculate the mean expression and standard deviation of the negative control probes.
+        Remove genes with average expression < mean + mult* x STD of ctrl probes.
+        *the paper used mult=2
+
+    Args:
+        adata: an adata object
+        signal2noise_threshold: manually specify the threshold.
+         If None, use the filter specified above.
+        mult: if signal2noise_threshold is None, mult is used in the signal2noise
+         threshold computation specified above.
+        overwrite: overwrite existing qc columns (default: False)
+    """
+    if "is_negctrl" not in adata.var or overwrite:
+        adata.var["is_negctrl"] = adata.var_names.str.startswith("Negative")
+    if "is_sysctrl" not in adata.var or overwrite:
+        adata.var["is_sysctrl"] = adata.var_names.str.startswith("System")
+    if "nCell" not in adata.var or overwrite:
+        # number of nonzero cells per gene
+        adata.var["nCell"] = (adata.X > 0).sum(axis=0).A1
+        adata.var["pctCell"] = 100 * adata.var["nCell"] / adata.n_obs
+    if "nTranscript" not in adata.var or overwrite:
+        adata.var["nTranscript"] = np.array(adata.X.sum(axis=0)).ravel()
+    if "meanTranscript" not in adata.var or overwrite:
+        adata.var["meanTranscript"] = adata.var["nTranscript"] / adata.n_obs
+    if "signal2noise" not in adata.var or overwrite:
+        if signal2noise_threshold is None:
+            negctrls = adata.var.loc[adata.var["is_negctrl"], "meanTranscript"]
+            signal2noise_threshold = negctrls.mean() + mult * negctrls.std()
+        adata.var["signal2noise"] = adata.var["meanTranscript"] / signal2noise_threshold
+
+
+def gene_qc_postfilter(adata):
+    adata.var["nCell_postfilter"] = adata.X.count_nonzero(axis=0)
+    adata.var["pctCell_postfilter"] = 100 * adata.var["nCell_postfilter"] / adata.n_obs
+
+    if adata.var["nCell"].eq(adata.var["nCell_postfilter"]).all():
+        raise ValueError("adata was not filtered")
+
+
+def cell_qc_postfilter(adata):
+    adata.obs["nFeature_RNA_postfilter"] = adata.X.count_nonzero(axis=1)
+    adata.obs["nCount_RNA_postfilter"] = adata.X.sum(axis=1)
+
+    if adata.obs["nCount_RNA"].eq(adata.obs["nCount_RNA_postfilter"]).all():
+        raise ValueError("adata was not filtered")
+
+
+def _fov_dimensions(fov_df):
     dx = []
     dy = []
     for slide in sorted(fov_df["slide"].unique()):
@@ -135,62 +196,74 @@ def fov_dimensions(fov_df):
     return x_px, y_px
 
 
-def slide_qc_plots(adata, columns=None):
+def slide_qc_plots(adata, columns=None, figsize: tuple = None):
     """
-    Plot the values from each QC column in fov_df on the slide layout.
-    Manually add columns to the dataframe for additional plots.
+    Plot the values from one or QC columns in adata.uns["fov_metadata"] (added by `slide_qc_data()`).
+    Specify columns to limit the number of plots.
     """
+    if figsize is None:
+        figsize = (5, 4)
     fov_df = adata.uns["fov_metadata"]
     required_cols = ["slide", "x", "y"]
     for col in required_cols:
         if col not in fov_df.columns:
             raise ValueError(f"column={col} is required in adata.obs")
-    if columns is not None:
-        fov_df = fov_df[columns + ["slide", "x", "y"]]
+    if columns is None:
+        columns = fov_df.columns.to_list()
+    elif isinstance(columns, str):
+        columns = [columns]
+    fov_df = fov_df[[c for c in columns if c not in required_cols] + required_cols]
 
-    fig_axs_list = []
-    # total number of slides
-    ncols = len(fov_df["slide"].unique())
-    for col in fov_df.columns:
-        # don't plot the metadata columns
-        if col in ["slide-fov", "slide", "fov", "x", "y"]:
-            continue
-
+    slides = natsorted(fov_df["slide"].unique())
+    blacklist = {"slide-fov", "slide", "fov", "x", "y"}
+    qc_columns = [c for c in fov_df.columns if c not in blacklist]
+    nrows = len(slides)
+    ncols = len(qc_columns)
+    fig, axs = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        squeeze=False,
+        figsize=(figsize[0] * ncols, figsize[1] * nrows),
+        sharex=True,
+        sharey=True,
+        gridspec_kw={"wspace": 0, "hspace": 0},
+        layout="tight",
+    )
+    fig.supylabel("y", x=1.0, ha="right", rotation=0)
+    fig.supxlabel("x")
+    for i_col, column in enumerate(qc_columns):
         # normalize the colormap for all slides at once
-        qc_param = col
-        norm = Normalize(vmin=fov_df[qc_param].min(), vmax=fov_df[qc_param].max())
+        norm = Normalize(vmin=fov_df[column].min(), vmax=fov_df[column].max())
+        for i_row, slide in enumerate(slides):
+            ax = axs[i_row, i_col]
 
-        fig, axs = plt.subplots(
-            nrows=1, ncols=ncols, figsize=(3 * ncols, 6), sharex=True, sharey=True
-        )
-        if not isinstance(axs, Iterable):
-            axs = [axs]
-        # fig.suptitle(qc_param, y=0.875)
-        fig.supxlabel("x", y=0.075)
-        for i, s in enumerate(natsorted(fov_df["slide"].unique())):
-            axs[i].set_title(f"slide {s}")
-            fov_df_slide = fov_df[fov_df["slide"] == s]
+            # main plot
             sns.scatterplot(
-                data=fov_df_slide,
+                data=fov_df[fov_df["slide"] == slide],
                 x="x",
                 y="y",
-                hue=qc_param,
+                hue=column,
                 palette="coolwarm",
                 hue_norm=norm,
                 legend=False,
-                ax=axs[i],
+                ax=ax,
             )
-            # hide all ticks and borders
-            axs[i].spines["top"].set_visible(False)
-            axs[i].spines["right"].set_visible(False)
-            axs[i].spines["bottom"].set_visible(False)
-            axs[i].spines["left"].set_visible(False)
-            axs[i].tick_params(
-                left=False, bottom=False, labelleft=False, labelbottom=False
-            )
-            axs[i].set_xlabel(None)
-            if i == 0:
-                # only plot the colorbar once
+
+            # tweak all ticks, borders & labels
+            ax.set_xlabel(None)
+            ax.set_ylabel(None)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            if i_row == nrows - 1:
+                ax.spines["bottom"].set_visible(False)
+            if i_col == 0:
+                ax.spines["left"].set_visible(False)
+            ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+            if i_col == 0:
+                ax.set_ylabel(f"slide {slide}")
+
+            # only plot the colorbar once per column
+            if i_row == 0:
                 sm = plt.cm.ScalarMappable(cmap="coolwarm", norm=norm)
                 sm.set_array([])
                 cbar = fig.colorbar(
@@ -200,97 +273,93 @@ def slide_qc_plots(adata, columns=None):
                     shrink=0.4,
                     pad=0.1,
                     aspect=30,
-                    ax=axs,
+                    ax=ax,
                 )
-                # colorbar label doubles as the figure suptitle
-                cbar.set_label(qc_param)
-            else:
-                # only plot the y label for the first plot
-                axs[i].set_ylabel(None)
-        fig_axs_list.append((fig, axs))
+                # colorbar label doubles as the figure title
+                cbar.set_label(column)
 
     # return the plot elements for manual post-processing
-    return fig_axs_list
-
-
-def plot_fov_edge_distances(
-    adata,
-    figsize=(12, 6),
-    subplot_kwargs=None,
-    # plot_kwargs=None,
-):
-    bins = 50
-    cmap = "Blues"
-    color1 = "dodgerblue"
-    color2 = "limegreen"
-    if subplot_kwargs is None:
-        subplot_kwargs = {}
-    # if plot_kwargs is None:
-    #     plot_kwargs = {}
-
-    fig, axs = plt.subplots(
-        ncols=3,
-        gridspec_kw={"width_ratios": [1, 1, 0.05]},
-        constrained_layout=True,
-        figsize=figsize,
-        **subplot_kwargs,
-    )
-    x, y = adata.uns["fov_dims_px"].values()
-    fig.suptitle(
-        "Distributions of cell distances to the edge of the camera's FOV "
-        + f"({x}x{y} pixels)"
-    )
-
-    # 1D histplot
-    sns.histplot(
-        np.log1p(adata.obs["dist2edge_px"]),
-        bins=bins,
-        stat="percent",
-        color=color1,
-        ax=axs[0],
-        alpha=0.5,
-    )
-    axs[0].set_title("Minimum distance to the FOV edge")
-    axs[0].set_xlabel("log1p(pixels)", color=color1)
-    axs[0].set_ylabel("% of cells")
-    axs01 = axs[0].twiny()
-    sns.histplot(
-        adata.obs["dist2edge_px"],
-        bins=bins,
-        stat="percent",
-        color=color2,
-        ax=axs01,
-        alpha=0.5,
-    )
-    axs01.set_xlabel("pixels", color=color2)
-    axs[0].set_zorder(1)
-    axs01.set_zorder(0)
-    axs[0].patch.set_alpha(0)  # background transparency
-
-    # 2D histplot
-    sns.histplot(
-        x=adata.obs["x2edge_px"],
-        y=adata.obs["y2edge_px"],
-        cmap=cmap,
-        cbar=False,
-        ax=axs[1],
-    )
-    axs[1].set_title("2D distance to FOV edge")
-    axs[1].set_xlabel("Pixels along the x-axis")
-    axs[1].set_ylabel("Pixels along the y-axis")
-
-    # colormap
-    norm = Normalize(
-        vmin=0,
-        vmax=max(adata.obs["x2edge_px"].max(), adata.obs["y2edge_px"].max()),
-    )
-    ColorbarBase(axs[2], cmap=cmap, norm=norm)
-    axs[2].set_ylabel("Number of cells")
-
     return fig, axs
 
 
-def plot_correlations(
+# def plot_fov_edge_distances(
+#     adata,
+#     figsize=(12, 6),
+#     subplot_kwargs=None,
+#     # plot_kwargs=None,
+# ):
+#     bins = 50
+#     cmap = "Blues"
+#     color1 = "dodgerblue"
+#     color2 = "limegreen"
+#     if subplot_kwargs is None:
+#         subplot_kwargs = {}
+#     # if plot_kwargs is None:
+#     #     plot_kwargs = {}
+#
+#     fig, axs = plt.subplots(
+#         ncols=3,
+#         gridspec_kw={"width_ratios": [1, 1, 0.05]},
+#         constrained_layout=True,
+#         figsize=figsize,
+#         **subplot_kwargs,
+#     )
+#     x, y = adata.uns["fov_dims_px"].values()
+#     fig.suptitle(
+#         "Distributions of cell distances to the edge of the camera's FOV "
+#         + f"({x}x{y} pixels)"
+#     )
+#
+#     # 1D histplot
+#     sns.histplot(
+#         np.log1p(adata.obs["dist2edge_px"]),
+#         bins=bins,
+#         stat="percent",
+#         color=color1,
+#         ax=axs[0],
+#         alpha=0.5,
+#     )
+#     axs[0].set_title("Minimum distance to the FOV edge")
+#     axs[0].set_xlabel("log1p(pixels)", color=color1)
+#     axs[0].set_ylabel("% of cells")
+#     axs01 = axs[0].twiny()
+#     sns.histplot(
+#         adata.obs["dist2edge_px"],
+#         bins=bins,
+#         stat="percent",
+#         color=color2,
+#         ax=axs01,
+#         alpha=0.5,
+#     )
+#     axs01.set_xlabel("pixels", color=color2)
+#     axs[0].set_zorder(1)
+#     axs01.set_zorder(0)
+#     axs[0].patch.set_alpha(0)  # background transparency
+#
+#     # 2D histplot
+#     sns.histplot(
+#         x=adata.obs["x2edge_px"],
+#         y=adata.obs["y2edge_px"],
+#         cmap=cmap,
+#         cbar=False,
+#         ax=axs[1],
+#     )
+#     axs[1].set_title("2D distance to FOV edge")
+#     axs[1].set_xlabel("Pixels along the x-axis")
+#     axs[1].set_ylabel("Pixels along the y-axis")
+#
+#     # colormap
+#     norm = Normalize(
+#         vmin=0,
+#         vmax=max(adata.obs["x2edge_px"].max(), adata.obs["y2edge_px"].max()),
+#     )
+#     ColorbarBase(axs[2], cmap=cmap, norm=norm)
+#     axs[2].set_ylabel("Number of cells")
+#
+#     return fig, axs
+
+
+def plot_2d_correlations(
     adata,
     xcolumn,
     ycolumn,
@@ -306,6 +375,9 @@ def plot_correlations(
     subplot_kwargs=None,
     plot_kwargs=None,
 ):
+    """
+    Plot the distributions and 2D correlation between two columns in adata.obs.
+    """
     if cmap_2d is None:
         cmap_2d = "Blues"
     if bins_1d is None:
@@ -426,7 +498,8 @@ def plot_avg_per_pixel(
     Args:
         adata: an adata object
         column: a numeric column in adata.obs
-        fill_cell_area: distribute the column value over all pixels covered by the cell, assuming square cells (default: False)
+        fill_cell_area: distribute the column value over all pixels covered by the cell,
+         assuming square cells (default: False)
         log1p: normalize the final values per pixel using np.log1p
         cmap: colormap (default: "gist_rainbow")
         background_color: color for pixels with 0 values (default: "black")
@@ -548,7 +621,7 @@ def plot_avg_per_pixel(
     return fig, axs
 
 
-def violin(
+def plot_violin(
     adata: ad.anndata,
     keys: str | list,
     inner=None,
@@ -568,10 +641,8 @@ def violin(
         plot_kwargs = {}
 
     ncols = len(keys)
-    fig, axs = plt.subplots(nrows=1, ncols=ncols, **subplot_kwargs)
+    fig, axs = plt.subplots(nrows=1, ncols=ncols, squeeze=False, **subplot_kwargs)
     color_cycle = itertools.cycle(plt.get_cmap("tab10").colors)
-    if not isinstance(axs, Iterable):
-        axs = [axs]
     for i, key in enumerate(keys):
         color = next(color_cycle)
         sns.violinplot(
@@ -581,7 +652,7 @@ def violin(
             fill=fill,
             cut=cut,
             log_scale=log_scale,
-            ax=axs[i],
+            ax=axs[0, i],
             **plot_kwargs,
         )
         # sns.stripplot(
@@ -592,30 +663,12 @@ def violin(
         #     ax=axs[i],
         #     **plot_kwargs,
         # )
-        axs[i].spines["top"].set_visible(False)
-        axs[i].spines["right"].set_visible(False)
-        axs[i].spines["bottom"].set_visible(False)
-        axs[i].spines["left"].set_visible(True)
-        axs[i].set_title(key)
+        axs[0, i].spines["top"].set_visible(False)
+        axs[0, i].spines["right"].set_visible(False)
+        axs[0, i].spines["bottom"].set_visible(False)
+        axs[0, i].spines["left"].set_visible(True)
+        axs[0, i].set_title(key)
     return fig, axs
-
-
-def gene_qc(adata):
-    """
-    Add QC parameters to adata.var
-    """
-    if "is_negctrl" not in adata.var:
-        adata.var["is_negctrl"] = adata.var_names.str.startswith("Negative")
-    if "is_sysctrl" not in adata.var:
-        adata.var["is_sysctrl"] = adata.var_names.str.startswith("System")
-    if "nCell" not in adata.var:
-        # number of nonzero cells per gene
-        adata.var["nCell"] = (adata.X > 0).sum(axis=0).A1
-        adata.var["pctCell"] = 100 * adata.var["nCell"] / adata.n_obs
-    if "nTranscript" not in adata.var:
-        adata.var["nTranscript"] = np.array(adata.X.sum(axis=0)).ravel()
-    if "meanTranscript" not in adata.var:
-        adata.var["meanTranscript"] = adata.var["nTranscript"] / adata.n_obs
 
 
 def plot_ncell_per_condition(
@@ -628,12 +681,13 @@ def plot_ncell_per_condition(
     text_kwargs=None,
 ):
     """
-    Plot the number of cells per condition.
+    Plot the number of cells per condition in a column in adata.obs.
 
     Args:
         adata: an adata object
         columns: one or more columns in adata.obs to visualize, in order of significance.
-        offset_between_conditions: distance between different conditions. Can be a single value, or a list of offset values for each column (length=len(columns)-1)
+        offset_between_conditions: distance between different conditions.
+         Can be a single value, or a list of offset values for each column (length=len(columns)-1)
     """
     if isinstance(columns, str):
         columns = [columns]
@@ -734,6 +788,7 @@ def plot_value_distribution(
 
     Args:
         adata: an adata object.
+        layer: the layer the values are drawn from (default: X)
     """
     if layer is None:
         array = adata.X
@@ -773,7 +828,7 @@ def plot_value_distribution(
     return fig, ax
 
 
-def plot_distribution(
+def plot_column_distribution(
     adata,
     column,
     axis=None,
@@ -782,6 +837,9 @@ def plot_distribution(
     subplot_kwargs=None,
     plot_kwargs=None,
 ):
+    """
+    Plot the distribution of values for a column present in either adata.obs or adata.var.
+    """
     if axis is None:
         if column in adata.obs:
             axis = 0
@@ -791,10 +849,10 @@ def plot_distribution(
             raise IndexError(f"{column=} not found in adata.obs or var")
     if axis == 0:
         series = adata.obs[column]
-        unit = "cell"
+        unit = "cells"
     elif axis == 1:
         series = adata.var[column]
-        unit = "gene"
+        unit = "genes"
     else:
         raise IndexError("Axis must be None, 0 or 1")
     if subplot_kwargs is None:
@@ -809,6 +867,6 @@ def plot_distribution(
     fig, ax = plt.subplots(**subplot_kwargs)
     sns.histplot(series, ax=ax, **plot_kwargs)
     ax.set_xlim(x_min - x_pad, x_max + x_pad)
-    ax.set_title(f"Distribution of {column} per {unit}")
+    ax.set_title(f"Distribution of {column} over all {unit}")
 
     return fig, ax
