@@ -8,11 +8,38 @@ from sklearn.decomposition import TruncatedSVD
 def dim_red(
     adata,
     n_dims=50,
+    key_added=None,
     random_state=42,
 ):
-    """Term Frequency Latent Semantic Indexing"""
-    X = adata.layers["binary"]
+    """
+    Dimensionality reduction using Term Frequency Latent Semantic Indexing.
+    """
+    if key_added is None:
+        key_added = "X_svd"
+    prefix, uns_key = key_added.split("_", 1)
+    if prefix != "X" or len(uns_key) == 0:
+        raise ValueError(
+            f"{key_added=} must start with 'X_', e.g. 'X_svd'"
+        )
+
+    layer = "binary"
+    if layer not in adata.layers:
+        raise KeyError(
+            f"{layer=} not found in adata.layers. "
+            "Please run st.pp.binarize first!"
+        )
+    X = adata.layers[layer]
+    if "nFeature_RNA_postfilter" not in adata.obs.columns:
+        raise KeyError(
+            "nFeature_RNA_postfilter not in adata.obs. "
+            "Please run st.pp.cell_qc_postfilter first!"
+        )
     cell_sums = adata.obs["nFeature_RNA_postfilter"].to_numpy(dtype=np.float32)
+    if "nCell_postfilter" not in adata.var.columns:
+        raise KeyError(
+            "nCell_postfilter not in adata.var. "
+            "Please run st.pp.gene_qc_postfilter first!"
+        )
     gene_counts = adata.var["nCell_postfilter"].to_numpy(dtype=np.float32)
     n_cells = X.shape[0]
 
@@ -28,15 +55,19 @@ def dim_red(
     svd = TruncatedSVD(n_components=n_dims + 1, random_state=random_state)
 
     # Drop 1st dimension, is not informative (like scATAC; this case expl var 200-fold lower than 2nd dim)
-    adata.obsm["X_svd"] = svd.fit_transform(X_tfidf)[:, 1:]
-    adata.uns["svd"] = {
+    adata.obsm[key_added] = svd.fit_transform(X_tfidf)[:, 1:]
+    adata.uns[uns_key] = {
         "idf": idf,
         "explained_variance_ratio": svd.explained_variance_ratio_[1:],
     }
 
 
-def plot_scree(adata):
-    evr = adata.uns["svd"]["explained_variance_ratio"]
+def plot_scree(adata, obsm_key=None):
+    if obsm_key is None:
+        obsm_key = "X_svd"
+    uns_key = obsm_key.split("_", 1)[1]
+
+    evr = adata.uns[uns_key]["explained_variance_ratio"]
     xs = [i + 1 for i in range(len(evr))]
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 3))
@@ -55,18 +86,23 @@ def plot_scree(adata):
 def plot_dim_red(
     adata,
     color,
+    obsm_key=None,
     cmap="tab10",
     ndims=6,
     subset_size=1_000,
     random_state=42,
 ):
+    if obsm_key is None:
+        obsm_key = "X_svd"
+    uns_key = obsm_key.split("_", 1)[1]
+
     cmap = plt.get_cmap(cmap)
     if isinstance(color, str):
         color = [color]
 
     data = adata.obs[color].copy()
-    data[[str(dim + 1) for dim in range(ndims)]] = adata.obsm["X_svd"][:, :ndims]
-    evr_array = adata.uns["svd"]["explained_variance_ratio"]
+    data[[str(dim + 1) for dim in range(ndims)]] = adata.obsm[obsm_key][:, :ndims]
+    evr_array = adata.uns[uns_key]["explained_variance_ratio"]
 
     for c in color:
         df = data

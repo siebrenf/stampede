@@ -2,7 +2,7 @@
 
 from ._dim_red import dim_red
 from ._filter import filter_cells, filter_genes
-from ._process import binarize
+from ._process import binarize, knn_count_smoothing, pseudobulk
 from ._qc import cell_qc_postfilter, gene_qc, gene_qc_postfilter, slide_qc
 
 __all__ = [
@@ -14,4 +14,6 @@ __all__ = [
     "filter_cells",
     "binarize",
     "dim_red",
+    "knn_count_smoothing",
+    "pseudobulk",
 ]
