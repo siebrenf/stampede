@@ -32,11 +32,9 @@ dependencies = [
 
 [project.optional-dependencies]
 docs = [
-    "sphinx >=9.0.0",
+    "sphinx",
     "sphinx-rtd-theme",
     "m2r2 >=0.3.2",
-    "nbsphinx",
-    "lxml_html_clean",  # fixes nbsphinx
 ]
 test = [
     "black",

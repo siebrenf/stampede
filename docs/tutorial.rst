@@ -2,7 +2,4 @@
 Tutorial
 ========
 
-.. toctree::
-   :maxdepth: 2
-
-   ../tutorial
+https://github.com/siebrenf/stamp/blob/main/tutorial.ipynb

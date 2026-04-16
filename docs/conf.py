@@ -33,7 +33,6 @@ extensions = [
     "sphinx.ext.napoleon",     # for Google-style docstrings
     # "sphinx.ext.autosummary",  # Create neat summary tables
     "m2r2",                    # recognize markdown files
-    "nbsphinx",                # recognize notebooks
 ]
 
 exclude_patterns = ["README.md"]
@@ -47,9 +46,6 @@ autodoc_typehints_format = "short"
 
 # Configuration of m2r2
 source_suffix = ['.rst', '.md']
-
-# Configuration of nbsphinx
-nbsphinx_execute = "never"
 
 
 # -- Options for HTML output -------------------------------------------------
