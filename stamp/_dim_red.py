@@ -18,15 +18,12 @@ def dim_red(
         key_added = "X_svd"
     prefix, uns_key = key_added.split("_", 1)
     if prefix != "X" or len(uns_key) == 0:
-        raise ValueError(
-            f"{key_added=} must start with 'X_', e.g. 'X_svd'"
-        )
+        raise ValueError(f"{key_added=} must start with 'X_', e.g. 'X_svd'")
 
     layer = "binary"
     if layer not in adata.layers:
         raise KeyError(
-            f"{layer=} not found in adata.layers. "
-            "Please run st.pp.binarize first!"
+            f"{layer=} not found in adata.layers. Please run st.pp.binarize first!"
         )
     X = adata.layers[layer]
     if "nFeature_RNA_postfilter" not in adata.obs.columns:
