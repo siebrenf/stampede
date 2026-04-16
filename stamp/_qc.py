@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import itertools
 import os
 from collections.abc import Iterable
@@ -116,7 +118,7 @@ def gene_qc(
     mult: int | float = 1,
     overwrite: bool = False,
 ):
-    """
+    r"""
     Add QC parameters to adata.var.
 
     About the Signal-to-noise filter:
@@ -126,8 +128,9 @@ def gene_qc(
 
         Calculate the mean expression and standard deviation of the negative control
         probes.
-        Remove genes with average expression < mean + mult* x STD of ctrl probes.
-        *the paper used mult=2
+        Remove genes with average expression < mean + mult\* x STD of ctrl probes.
+
+        \*the paper used mult=2
 
     Args:
         adata: an adata object

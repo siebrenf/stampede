@@ -14,10 +14,20 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 dynamic = ["dependencies", "version"]
 
+# listed in requirments.yaml
+#[project.optional-dependencies]
+#docs = [
+#    "sphinx >=9.0.0",
+#    "sphinx-rtd-theme",
+#]
+
 [build-system]
 # hatchling is the build backend, and reads the version from the code
-# unidep reads the dependcies from the requirements.yaml
-requires = ["hatchling>=1.5.0", "unidep"]
+# unidep reads (optional) dependencies from the requirements.yaml
+requires = [
+    "hatchling >=1.5.0",
+    "unidep",
+]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]

@@ -1,27 +1,44 @@
+from __future__ import annotations
+
 import functools
 import operator
 
+import anndata as ad
+
 
 def filter_genes(
-    adata,
+    adata: ad.anndata,
     ncell_min: int = 0,
-    ncell_max=float("inf"),
-    ntranscript_min=0,
-    ntranscript_max=float("inf"),
-    signal2noise_threshold=1,
-    filter_columns: list = None,
-    verbose=True,
+    ncell_max: int = float("inf"),
+    ntranscript_min: int = 0,
+    ntranscript_max: int = float("inf"),
+    signal2noise_threshold: float = 1.0,
+    filter_columns: str | list = None,
+    verbose: bool = True,
 ):
     """
     Filter adata.var by a set of qc_params.
 
     Args:
+        adata: adata object
         ncell_min: minimum number of cells the gene is found in.
-        filter_columns: a list of additional columns to filter by. Columns by (convertible to) boolean, where False values are removed.
+        ncell_max: maximum number of cells the gene is found in.
+        ntranscript_min: minimum number of transcripts the gene must have.
+        ntranscript_max: maximum number of transcripts the gene must have.
+        signal2noise_threshold: the minimum signal-to-noise ratio the gene must have.
+        filter_columns: a list of additional columns to filter by.
+         Columns by (convertible to) boolean, where False values are removed.
+        verbose: provide written feedback (default: True)
+
+    Returns:
+        adata: the filtered adata object
     """
     if filter_columns is None:
         filter_columns = []
+    elif isinstance(filter_columns, str):
+        filter_columns = [filter_columns]
     adata.strings_to_categoricals()
+    filter_columns = [adata.obs[col] for col in filter_columns]
 
     ncells_filter = adata.var["nCell"].between(ncell_min, ncell_max)
     filter_columns.append(ncells_filter)
@@ -40,7 +57,7 @@ def filter_genes(
     total_gene_filter = functools.reduce(operator.and_, filter_columns)
 
     before = len(adata.var)
-    adata = adata[:, total_gene_filter].copy()
+    adata = adata[:, total_gene_filter]
     after = len(adata.var)
     if verbose:
         print(f"{before - after:_} genes filtered out, {after:_} genes remaining.")
@@ -48,31 +65,46 @@ def filter_genes(
 
 
 def filter_cells(
-    adata,
-    dist2edge_px_min=0,
-    falsecode_max=5,
-    negprobe_max=3,
-    transcripts_min=250,
-    transcripts_max=1500,
-    area_min=25,
-    area_max=100,
+    adata: ad.anndata,
+    dist2edge_px_min: int = 0,
+    falsecode_max: int = 5,
+    negprobe_max: int = 3,
+    ntranscript_min: int = 250,
+    ntranscript_max: int = 1500,
+    area_min: int = 25,
+    area_max: int = 100,
     filter_columns: list = None,
-    verbose=True,
+    verbose: bool = True,
 ):
     """
     Filter adata.obs by a set of qc_params.
 
     Args:
-        filter_columns: a list of additional columns to filter by. Columns by (convertible to) boolean, where False values are removed.
+        adata: adata object
+        dist2edge_px_min:
+        falsecode_max: maximum number of false codes the cell may have
+        negprobe_max: maximum number of negative probes the cell may have
+        ntranscript_min: minimum number of transcripts the cell must have
+        ntranscript_max: maximum number of transcripts the cell must have
+        area_min: minimum area (in pixels) the cell must have
+        area_max: maximum area (in pixels) the cell must have
+        filter_columns: a list of additional columns to filter by.
+         Columns by (convertible to) boolean, where False values are removed.
+        verbose: provide written feedback (default: True)
+
+    Returns:
+        adata: the filtered adata object
     """
     if filter_columns is None:
         filter_columns = []
-    else:
-        for col in filter_columns:
-            if adata.obs[col].dtype != bool:
-                raise TypeError(f"filter_column '{col}' must have a boolean dtype")
-        filter_columns = [adata.obs[col] for col in filter_columns]
+    elif isinstance(filter_columns, str):
+        filter_columns = [filter_columns]
+    # else:
+    #     for col in filter_columns:
+    #         if adata.obs[col].dtype != bool:
+    #             raise TypeError(f"filter_column '{col}' must have a boolean dtype")
     adata.strings_to_categoricals()
+    filter_columns = [adata.obs[col] for col in filter_columns]
 
     dist2edge_filter = adata.obs["dist2edge_px"] >= dist2edge_px_min
     filter_columns.append(dist2edge_filter)
@@ -81,7 +113,7 @@ def filter_cells(
     negprobe_filter = ~(adata.obs["nCount_negprobes"] >= negprobe_max)
     filter_columns.append(negprobe_filter)
     transcript_filter = adata.obs["nCount_RNA"].between(
-        transcripts_min, transcripts_max
+        ntranscript_min, ntranscript_max
     )
     filter_columns.append(transcript_filter)
     area_filter = adata.obs["Area.um2"].between(area_min, area_max)

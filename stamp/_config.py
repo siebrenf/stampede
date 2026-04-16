@@ -1,8 +1,9 @@
 class Config(dict):
     """
     A dictionary with package specific settings that may be altered during runtime.
-    Values may be changed.
-    Keys may not be added or removed.
+    Accessed using `import stamp as st; st.config`.
+
+    Keys may not be added or removed, but values may be changed.
     """
 
     def __init__(self):

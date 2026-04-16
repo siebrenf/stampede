@@ -14,33 +14,39 @@ Work in progress.
 
 ## Installation
 
+### Pip/Conda
+
 This package is not available on pip/conda yet.
 
 
 
-## Developer installation
+### Developer installation
 
 Clone the repo
-```commandline
+```bash
 git clone https://github.com/siebrenf/stamp.git
 ```
 
 Create a conda environment
-```commandline
+```bash
 conda env create -n stamp -f stamp/requirements.yaml
 ```
 
 Activate the conda environment
-```commandline
+```bash
 conda activate stamp
 ```
 
 Install the package
-```commandline
+```bash
 pip install -e stamp
 ```
 
 
+
+## Documentation
+
+Check out our GitHub pages!
 
 ## Usage
 

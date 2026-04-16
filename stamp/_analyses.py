@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import anndata as ad
 from pydeseq2.dds import DeseqDataSet
 from pydeseq2.default_inference import DefaultInference
