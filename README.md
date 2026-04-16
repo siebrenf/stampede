@@ -1,5 +1,8 @@
 # Unnamed stamp processing package
 
+[![Documentation](https://github.com/siebrenf/stamp/actions/workflows/docs.yml/badge.svg)](https://github.com/siebrenf/stamp/actions/workflows/docs.yml)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 Work in progress.
 
 
@@ -46,7 +49,7 @@ pip install -e stamp
 
 ## Documentation
 
-Check out our GitHub pages!
+Check out [our GitHub pages](https://siebrenf.github.io/stamp/index.html)!
 
 ## Usage
 

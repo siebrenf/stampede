@@ -21,13 +21,11 @@ author = 'Niels Velthuijs, Siebren Frölich'
 # -- General configuration ---------------------------------------------------
 
 autodoc_mock_imports = [
-    "scanpy",
     "anndata",
-    "pydeseq2",
     "matplotlib",
+    "scanpy",
     "seaborn",
-    "adjusttext",
-    # "mygene",
+    "pydeseq2",
 ]
 
 extensions = [
@@ -35,7 +33,7 @@ extensions = [
     "sphinx.ext.napoleon",     # for Google-style docstrings
     # "sphinx.ext.autosummary",  # Create neat summary tables
     "m2r2",                    # recognize markdown files
-    # "nbsphinx",                # recognize notebooks
+    "nbsphinx",                # recognize notebooks
 ]
 
 exclude_patterns = ["README.md"]

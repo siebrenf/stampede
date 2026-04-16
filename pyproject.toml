@@ -12,7 +12,23 @@ maintainers = [
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-dynamic = ["dependencies", "version"]
+dynamic = ["version"]
+
+requires-python = ">=3.12"
+dependencies = [
+    "anndata",
+    "matplotlib",
+    "natsort",
+    "numpy",
+    "pandas <3",
+    "pydeseq2",
+    #"python >=3.12",
+    "igraph",  # python-igraph on conda
+    "scanpy",
+    "scikit-learn",
+    "scipy",
+    "seaborn",
+]
 
 [project.optional-dependencies]
 # must be specified here for the github action
@@ -22,14 +38,16 @@ docs = [
     "m2r2 >=0.3.2",
     "nbsphinx",
 ]
+test = [
+    "black",
+    "isort",
+    "ipykernel",
+    "pytest",
+]
 
 [build-system]
 # hatchling is the build backend, and reads the version from the code
-# unidep reads (optional) dependencies from the requirements.yaml
-requires = [
-    "hatchling >=1.5.0",
-    "unidep",
-]
+requires = ["hatchling >=1.5.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
