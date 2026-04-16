@@ -24,10 +24,5 @@ optional_dependencies:  # for pip install
     - isort
     - ipykernel
     - pytest
-  docs:
-    - sphinx >=9.0.0
-    - sphinx-rtd-theme
-    - m2r2 >=0.3.2
-    - nbsphinx
   notebook:
     - ipykernel

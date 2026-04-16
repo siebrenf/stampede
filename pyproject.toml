@@ -14,12 +14,14 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 dynamic = ["dependencies", "version"]
 
-# listed in requirments.yaml
-#[project.optional-dependencies]
-#docs = [
-#    "sphinx >=9.0.0",
-#    "sphinx-rtd-theme",
-#]
+[project.optional-dependencies]
+# must be specified here for the github action
+docs = [
+    "sphinx >=9.0.0",
+    "sphinx-rtd-theme",
+    "m2r2 >=0.3.2",
+    "nbsphinx",
+]
 
 [build-system]
 # hatchling is the build backend, and reads the version from the code
