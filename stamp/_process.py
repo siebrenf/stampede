@@ -127,39 +127,99 @@ def knn_count_smoothing(
 
 def pseudobulk(
     adata: ad.anndata,
-    cluster: str,
-    cluster_column: str,
-    sample_column: str,
+    samples_column: str,
     samples: Iterable = None,
+    cluster_column: str = None,
+    cluster: str = None,
     layer: str = None,
 ):
     """
     Generate a pseudobulk table (genes x samples) for all samples in the sample_column
-    and the specified cluster in the cluster_column.
+    and the cluster in the cluster_column, if specified.
 
     Args:
         adata: adata object
-        cluster: name of the cluster in cluster_column to aggregate to pseudobulk
-        cluster_column: column in adata.obs
-        sample_column: column in adata.obs
+        samples_column: column in adata.obs
         samples: samples in the sample columns to use (default: all)
+        cluster_column: column in adata.obs (only needed if cluster is specified)
+        cluster: name of the cluster in cluster_column to aggregate to pseudobulk
         layer: layer to aggregate (default: "counts")
 
     Returns:
         pd.DataFrame
     """
-    if cluster not in adata.obs[cluster_column].unique():
-        raise ValueError(f"{cluster=} not found in adata.obs['{cluster_column}']")
+    if cluster:
+        # subset adata to specified cluster
+        if cluster not in adata.obs[cluster_column].unique():
+            raise ValueError(f"{cluster=} not found in adata.obs['{cluster_column}']")
+        adata = adata[adata.obs[cluster_column] == cluster]
+
     if layer is None:
         layer = "counts"
 
     sample2counts = {}
-    adata_sub = adata[adata.obs[cluster_column] == cluster]
     if samples is None:
-        samples = natsorted(adata_sub.obs[sample_column].unique())
+        samples = natsorted(adata.obs[samples_column].unique())
     for sample in samples:
-        X = adata_sub[adata_sub.obs[sample_column] == sample].layers[layer]
+        X = adata[adata.obs[samples_column] == sample].layers[layer]
         sample2counts[sample] = X.sum(axis=0).A1
 
-    pseudobulk_df = pd.DataFrame(data=sample2counts, index=adata_sub.var_names)
+    pseudobulk_df = pd.DataFrame(data=sample2counts, index=adata.var_names)
     return pseudobulk_df
+
+
+def detection_rates(adata: ad.anndata, samples_column: str, normalize: bool = True):
+    """
+    Calculate gene detection rates per sample in the samples_column of adata.obs.
+
+    Args:
+        adata: adata object
+        samples_column: column in adata.obs
+        normalize: normalize detection rates for sample quality
+
+    Returns:
+        pd.DataFrame
+    """
+    # gene detection rate per sample
+    columns = []
+    det_rate_cols = []
+    for sample, ncells in adata.obs[samples_column].value_counts().items():
+        columns.append(sample)
+        det_rates = (
+            adata[adata.obs[samples_column] == sample].layers["binary"].sum(axis=0).A
+            / ncells
+        )
+        det_rate_cols.append(det_rates[0, :])
+    det_rate_df = pd.DataFrame(det_rate_cols, index=columns, columns=adata.var_names).T
+
+    # normalize detection rates for sample quality
+    if normalize:
+        dm = det_rate_df.values
+        eps = 1e-9
+        dm_clipped = np.clip(dm.astype(np.float64), eps, 1 - eps)
+        logit_dm = np.log(dm_clipped / (1 - dm_clipped))
+
+        zero_mask = dm == 0
+        logit_dm_masked = logit_dm.copy()
+        logit_dm_masked[zero_mask] = np.nan
+
+        sample_medians = np.nanmedian(logit_dm_masked, axis=0)
+        worst = sample_medians.min()
+        shifts = sample_medians - worst
+
+        logit_corrected = logit_dm.copy()
+        for i, s in enumerate(shifts):
+            col_mask = ~zero_mask[:, i]  # noqa
+            logit_corrected[col_mask, i] -= s
+
+        normalized = 1 / (1 + np.exp(-logit_corrected))
+        normalized[zero_mask] = 0
+        # shouldn't be necessary, but doesn't hurt to make sure
+        normalized = np.clip(normalized, 0, 1)
+
+        det_rate_df = pd.DataFrame(
+            normalized.astype(np.float32),
+            index=det_rate_df.index,
+            columns=det_rate_df.columns,
+        )
+    return det_rate_df
