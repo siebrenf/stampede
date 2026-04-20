@@ -1,5 +1,6 @@
 """plotting functions"""
 
+from ._analyses import plot_volcano as volcano
 from ._dim_red import plot_dim_red as dim_red
 from ._dim_red import plot_scree as scree
 from ._qc import plot_2d_correlations as correlations
@@ -20,4 +21,5 @@ __all__ = [
     "column_distribution",
     "scree",
     "dim_red",
+    "volcano",
 ]
