@@ -18,11 +18,12 @@ def test_lint():
     sp.check_output(
         "black "
         + f"{join(base, 'stampede')} {join(base, 'tests')} "
-        + f"{join(base, 'tutorial.ipynb')} ",
+        + f"{join(base, 'tutorial.ipynb')} "
+        + f"{join(base, 'docs')}",
         shell=True,
     )
     sp.check_output(
         "isort --overwrite-in-place --profile black --conda-env requirements.yaml "
-        + f"{join(base, 'stampede')} {join(base, 'tests')} ",
+        + f"{join(base, 'stampede')} {join(base, 'tests')}  {join(base, 'docs')}",
         shell=True,
     )

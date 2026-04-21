@@ -3,6 +3,7 @@ from __future__ import annotations
 import warnings
 
 import anndata as ad
+import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,14 +14,17 @@ from matplotlib import patheffects
 
 
 def pydeseq2(
-    adata: ad.anndata,
+    adata: ad.AnnData,
     design: str,
     contrast: list,
-    inference: "Inference" = None,  # noqa
+    inference: "pydeseq2.inference.Inference" = None,  # noqa
     n_cpus: int = 16,
     return_objects: bool = False,
     dds_kwargs: dict = None,
     ds_kwargs: dict = None,
+) -> (
+    tuple["pydeseq2.dds.DeseqDataSet", "pydeseq2.ds.DeseqStats", pd.DataFrame]
+    | pd.DataFrame
 ):
     """
     Wrapper around pyDEseq2 for adata objects.
@@ -41,7 +45,7 @@ def pydeseq2(
         ds_kwargs: kwargs passed to DeseqStats
 
     Returns:
-        (pydeseq2 DeseqDataSet, DeseqStats and) pd.DataFrame
+        pydeseq2 output
     """
     # optional dependency
     from pydeseq2.dds import DeseqDataSet  # noqa
@@ -89,7 +93,7 @@ def plot_pydeseq2_volcano(
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
     text_kwargs: dict = None,
-):
+) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
     """
     Generate a volcano plot from a pyDESeq2 results dataframe.
 
@@ -112,7 +116,7 @@ def plot_pydeseq2_volcano(
         text_kwargs: kwargs passed to ax.text
 
     Returns:
-        fig, ax: matplotlib figure and axis object
+        matplotlib figure and axis object
     """
     if subplot_kwargs is None:
         subplot_kwargs = {}
@@ -204,13 +208,13 @@ def plot_pydeseq2_volcano(
 
 
 def sketch(
-    adata: ad.anndata,
+    adata: ad.AnnData,
     n: int = None,
     frac: float = 0.05,
     use_rep: str = "X_svd",
     obs_column: str = "subset",
     return_subset: bool = False,
-):
+) -> ad.AnnData | None:
     """
     Subset the cells in adata using GeoSketch.
 
@@ -223,7 +227,7 @@ def sketch(
         return_subset: if True, return a subset adata object.
 
     Returns:
-         The subset dataframe (if specified)
+         The subset anndata object (if specified)
     """
     # optional dependency
     from geosketch import gs  # noqa
@@ -242,10 +246,19 @@ def plot_sketch(
     obs_column: str = "subset",
     use_rep="X_svd",
     plot_kwargs=None,
-):
+) -> tuple[matplotlib.figure.Figure, list[matplotlib.axes.Axes]]:
     """
     Scatterplot highlighting the cells that were sampled.
     Requires the full adata object.
+
+    Args:
+        adata: adata object
+        obs_column: column in adata.obs with boolean values if the cell is kept
+        use_rep: use the indicated representation
+        plot_kwargs: kwargs passed to the main plotting function
+
+    Returns:
+        matplotlib figure and array of axes
     """
     adata.uns[f"{obs_column}_colors"] = [
         "#dadafe",  # light blue (False/discarded)
@@ -267,13 +280,13 @@ def paired_binomial_glm(
     detection_column: str = "detection_rate",
     covariate_columns: str = None,
     total_column: str = None,
-):
+) -> pd.DataFrame:
     """
     Runs paired donor-level binomial GLM:
         gene_detection_rate ~ condition + covariate(s)
 
     Args:
-        df: pandas DataFrame
+        df: dataframe
         test_condition: the condition to compare (e.g., "treated")
         reference_condition: the baseline condition (e.g., "control")
         condition_column: column with the condition
@@ -284,7 +297,7 @@ def paired_binomial_glm(
          Used to give weight to each gene. Unused if None.
 
     Returns:
-        pd.DataFrame: per-gene results including: beta, odds_ratio, pval, padj
+        per-gene results including beta, odds_ratio, pval, padj
     """
     # optional dependency
     import statsmodels.api as sm  # noqa
@@ -422,12 +435,12 @@ def plot_paired_binomial_glm_volcano(
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
     text_kwargs: dict = None,
-):
+) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
     """
     Generate a volcano plot from the detection_rates results dataframe.
 
     Args:
-        df: a pandas dataframe
+        df: a dataframe
         gene_column: column with gene names (e.g. "gene"). If None, use the index.
         or_column: column with odds ratios
         pvalue_column: column name of the adjusted p values to be converted to -log10 p-values
@@ -441,7 +454,7 @@ def plot_paired_binomial_glm_volcano(
         text_kwargs: kwargs passed to ax.text
 
     Returns:
-        fig, ax: matplotlib figure and axis object
+        matplotlib figure and axis object
     """
     or_thresh = abs(or_thresh)
     if subplot_kwargs is None:

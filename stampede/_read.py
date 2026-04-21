@@ -11,7 +11,9 @@ import scipy.sparse as sp
 from . import config
 
 
-def validate_input(slides: dict, samples_df: pd.DataFrame, data_dir: str = None):
+def validate_input(
+    slides: dict, samples_df: pd.DataFrame, data_dir: str = None
+) -> None:
     """
     Check the contents of the slides dictionary and samples_df for expected keys and
     columns, respectively.
@@ -24,7 +26,7 @@ def validate_input(slides: dict, samples_df: pd.DataFrame, data_dir: str = None)
         data_dir: optional filepath prefix (default: "")
 
     Returns:
-        None
+        Nothing
     """
     # validate the slides dictionary
     expected_keys = ["exprmat", "metadata", "fov_positions"]
@@ -69,7 +71,7 @@ def read_cosmx(
     overwrite: bool = True,
     verbose: bool = True,
     **kwargs,
-):
+) -> str:
     """
     Read exprMat_file for each slide, convert the contents to sparse anndata objects,
     and concatenate the results.
@@ -88,7 +90,7 @@ def read_cosmx(
         **kwargs: keyword arguments passed to pd.read_csv
 
     Returns:
-        adata_file
+        the value of the adata_file argument
     """
     if data_dir is None:
         data_dir = ""

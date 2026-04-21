@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 import anndata as ad
+import matplotlib
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,11 +13,11 @@ from sklearn.decomposition import TruncatedSVD
 
 
 def dim_red(
-    adata: ad.anndata,
+    adata: ad.AnnData,
     n_dims: int = 50,
     key_added: str = None,
     random_state: int = 42,
-):
+) -> None:
     """
     Dimensionality reduction using Term Frequency Latent Semantic Indexing.
 
@@ -27,7 +28,7 @@ def dim_red(
         random_state: random seed value
 
     Returns:
-        None: updates adata.obsm and adata.uns
+        Nothing, updates adata.obsm and adata.uns
     """
     if key_added is None:
         key_added = "X_svd"
@@ -74,7 +75,9 @@ def dim_red(
     }
 
 
-def plot_scree(adata: ad.anndata, obsm_key: str = None):
+def plot_scree(
+    adata: ad.AnnData, obsm_key: str = None
+) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
     """
     Scree plot
 
@@ -83,7 +86,7 @@ def plot_scree(adata: ad.anndata, obsm_key: str = None):
         obsm_key: key in adata.obsm with dim_red output (default: "X_svd")
 
     Returns:
-        fig, axs: matplotlib figure and array of axes
+        matplotlib figure and array of axes
     """
     if obsm_key is None:
         obsm_key = "X_svd"
@@ -106,14 +109,14 @@ def plot_scree(adata: ad.anndata, obsm_key: str = None):
 
 
 def plot_dim_red(
-    adata: ad.anndata,
+    adata: ad.AnnData,
     columns: str | Iterable,
     obsm_key: str = None,
     cmap: ColorType = "tab10",
     n_dims: int = 6,
     subset_size: int = 1_000,
     random_state: int = 42,
-):
+) -> list[tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]]:
     """
     Scree plot
 
@@ -127,7 +130,7 @@ def plot_dim_red(
         random_state: random seed value
 
     Returns:
-        fig, axs: matplotlib figure and array of axes
+        a list of tuples with matplotlib figure and axis
     """
     if obsm_key is None:
         obsm_key = "X_svd"
@@ -141,6 +144,7 @@ def plot_dim_red(
     data[[str(dim + 1) for dim in range(n_dims)]] = adata.obsm[obsm_key][:, :n_dims]
     evr_array = adata.uns[uns_key]["explained_variance_ratio"]
 
+    ret = []
     for c in columns:
         df = data
         if subset_size:
@@ -222,6 +226,6 @@ def plot_dim_red(
         ax.legend(handles=handles, loc="center", title=c)
         ax.axis("off")
 
-        plt.show()
+        ret.append((fig, ax))
 
-    return
+    return ret

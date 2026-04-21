@@ -7,7 +7,7 @@ import anndata as ad
 
 
 def filter_genes(
-    adata: ad.anndata,
+    adata: ad.AnnData,
     ncell_min: int = 0,
     ncell_max: int = float("inf"),
     ntranscript_min: int = 0,
@@ -15,7 +15,7 @@ def filter_genes(
     signal2noise_threshold: float = 1.0,
     filter_columns: str | list = None,
     verbose: bool = True,
-):
+) -> ad.AnnData:
     """
     Filter adata.var by a set of qc_params.
 
@@ -31,7 +31,7 @@ def filter_genes(
         verbose: provide written feedback (default: True)
 
     Returns:
-        adata: the filtered adata object
+        the filtered adata object
     """
     if filter_columns is None:
         filter_columns = []
@@ -65,7 +65,7 @@ def filter_genes(
 
 
 def filter_cells(
-    adata: ad.anndata,
+    adata: ad.AnnData,
     dist2edge_px_min: int = 0,
     falsecode_max: int = 5,
     negprobe_max: int = 3,
@@ -75,7 +75,7 @@ def filter_cells(
     area_max: int = 100,
     filter_columns: list = None,
     verbose: bool = True,
-):
+) -> ad.AnnData:
     """
     Filter adata.obs by a set of qc_params.
 
@@ -93,7 +93,7 @@ def filter_cells(
         verbose: provide written feedback (default: True)
 
     Returns:
-        adata: the filtered adata object
+        the filtered adata object
     """
     if filter_columns is None:
         filter_columns = []

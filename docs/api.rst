@@ -11,7 +11,7 @@ stampede
    :show-inheritance:
 
 stampede.pp
-========
+===========
 
 .. automodule:: stampede.pp
    :members:
@@ -19,7 +19,7 @@ stampede.pp
    :show-inheritance:
 
 stampede.pl
-========
+===========
 
 .. automodule:: stampede.pl
    :members:
@@ -27,7 +27,7 @@ stampede.pl
    :show-inheritance:
 
 stampede.tl
-========
+===========
 
 .. automodule:: stampede.tl
    :members:

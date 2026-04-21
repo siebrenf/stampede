@@ -10,7 +10,7 @@ import scipy.sparse as sp
 from natsort import natsorted
 
 
-def binarize(adata: ad.anndata, verbose: bool = True):
+def binarize(adata: ad.AnnData, verbose: bool = True) -> None:
     """
     Binarize the values in adata.X
 
@@ -19,7 +19,7 @@ def binarize(adata: ad.anndata, verbose: bool = True):
         verbose: provide written feedback (default: True)
 
     Returns:
-        None: updates adata.layers and adata.X
+        Nothing, updates adata.layers and adata.X
     """
     if "counts" not in adata.layers:
         adata.layers["counts"] = adata.X.copy()
@@ -40,13 +40,13 @@ def binarize(adata: ad.anndata, verbose: bool = True):
 
 
 def knn_count_smoothing(
-    adata: ad.anndata,
+    adata: ad.AnnData,
     layer_added=None,
     neighbors_use_rep=None,
     neighbors_key_added=None,
     neighbors_kwargs=None,
     verbose=True,
-):
+) -> None:
     """
     For each cell, replace its gene vector with the average of its KNN neighborhood.
 
@@ -62,7 +62,7 @@ def knn_count_smoothing(
         verbose: provide written feedback (default: True)
 
     Returns:
-        None: updates adata.layers and adata.X
+        Nothing, updates adata.layers and adata.X
     """
     layer = "binary"
     if layer not in adata.layers:
@@ -126,13 +126,13 @@ def knn_count_smoothing(
 
 
 def pseudobulk(
-    adata: ad.anndata,
+    adata: ad.AnnData,
     samples_column: str,
     samples: Iterable = None,
     cluster_column: str = None,
     cluster: str = None,
     layer: str = None,
-):
+) -> pd.DataFrame:
     """
     Generate a pseudobulk table (genes x samples) for all samples in the sample_column
     and the cluster in the cluster_column, if specified.
@@ -146,7 +146,7 @@ def pseudobulk(
         layer: layer to aggregate (default: "counts")
 
     Returns:
-        pd.DataFrame
+        a dataframe with summed layer values per sample
     """
     if cluster:
         # subset adata to specified cluster
@@ -168,7 +168,9 @@ def pseudobulk(
     return pseudobulk_df
 
 
-def detection_rates(adata: ad.anndata, samples_column: str, normalize: bool = True):
+def detection_rates(
+    adata: ad.AnnData, samples_column: str, normalize: bool = True
+) -> pd.DataFrame:
     """
     Calculate gene detection rates per sample in the samples_column of adata.obs.
 
@@ -178,7 +180,7 @@ def detection_rates(adata: ad.anndata, samples_column: str, normalize: bool = Tr
         normalize: normalize detection rates for sample quality
 
     Returns:
-        pd.DataFrame
+        a dataframe with normalized gene detection rates
     """
     # gene detection rate per sample
     columns = []
