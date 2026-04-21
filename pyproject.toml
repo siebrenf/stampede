@@ -1,5 +1,5 @@
 [project]
-name = "stamp"
+name = "stampede"
 description = ""
 authors = [
     {name = "Niels Velthuijs", email = "niels@mhlangalab.org"},
@@ -22,7 +22,6 @@ dependencies = [
     "natsort",
     "numpy",
     "pandas <3",  # anndata 0.12 cannot handle string columns
-    "pydeseq2",
     #"python >=3.12",  # f-strings
     "igraph",  # sc.tl.leiden
     "scanpy",
@@ -55,7 +54,7 @@ requires = ["hatchling >=1.5.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "stamp/__init__.py"
+path = "stampede/__init__.py"
 
 [tool.isort]
 profile = "black"

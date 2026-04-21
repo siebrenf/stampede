@@ -1,7 +1,7 @@
 class Config(dict):
     """
     A dictionary with package specific settings that may be altered during runtime.
-    Accessed using `import stamp as st; st.config`.
+    Accessed using `import stampede as st; st.config`.
 
     Keys may not be added or removed, but values may be changed.
     """

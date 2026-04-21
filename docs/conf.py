@@ -6,26 +6,33 @@
 
 # -- Path setup --------------------------------------------------------------
 
-import os
-import sys
-sys.path.insert(0, os.path.abspath(".."))  # so Sphinx finds your package
+from datetime import date
+
+import stampede
 
 
 # -- Project information -----------------------------------------------------
 
-project = 'stamp'  # TODO
-copyright = 'Niels Velthuijs, Siebren Frölich'
-author = 'Niels Velthuijs, Siebren Frölich'
+project = 'stampede'
+author = "Niels Velthuijs & Siebren Frölich"
+copyright = f"{date.today().year}, {author}"
+version = stampede.__version__
 
 
 # -- General configuration ---------------------------------------------------
 
 autodoc_mock_imports = [
+    "adjustText",
     "anndata",
     "matplotlib",
+    "natsort",
+    "numpy",
+    "pandas",
+    "igraph",
     "scanpy",
+    "scikit-learn",
+    "scipy",
     "seaborn",
-    "pydeseq2",
 ]
 
 extensions = [
@@ -46,6 +53,28 @@ autodoc_typehints_format = "short"
 
 # Configuration of m2r2
 source_suffix = ['.rst', '.md']
+
+
+# # Napoleon settings
+# # https://www.sphinx-doc.org/en/master/usage/extensions/napoleon.html
+#
+# napoleon_google_docstring = True
+# napoleon_numpy_docstring = False
+# napoleon_preprocess_types = True  # generate hyperlinks for parameter types
+#
+# napoleon_type_aliases = {
+#     "DeseqDataSet": ":class:`DeseqDataSet <pydeseq2.dds.DeseqDataSet>`",
+#     "Inference": ":class:`Inference <pydeseq2.inference.Inference>`",
+#     "DefaultInference": ":class:`DefaultInference "
+#     "<pydeseq2.default_inference.DefaultInference>`",
+#     # numpy short forms
+#     "ndarray": ":class:`numpy.ndarray`",
+#     "np.ndarray": ":class:`numpy.ndarray`",
+#     # pandas short forms
+#     "pd.DataFrame": ":class:`pandas.DataFrame`",
+#     "pd.Series": ":class:`pandas.Series`",
+#     "pandas.Index": ":class:`pandas.Index`",
+# }
 
 
 # -- Options for HTML output -------------------------------------------------

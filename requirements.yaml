@@ -1,4 +1,4 @@
-name: stamp
+name: stampede
 channels:
   - conda-forge
   - bioconda

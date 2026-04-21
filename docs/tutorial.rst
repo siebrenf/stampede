@@ -2,4 +2,4 @@
 Tutorial
 ========
 
-https://github.com/siebrenf/stamp/blob/main/tutorial.ipynb
+https://github.com/siebrenf/stampede/blob/main/tutorial.ipynb

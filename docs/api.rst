@@ -2,34 +2,34 @@
 API reference
 =============
 
-stamp
-=====
+stampede
+========
 
-.. automodule:: stamp
+.. automodule:: stampede
    :members:
    :undoc-members:
    :show-inheritance:
 
-stamp.pp
+stampede.pp
 ========
 
-.. automodule:: stamp.pp
+.. automodule:: stampede.pp
    :members:
    :undoc-members:
    :show-inheritance:
 
-stamp.pl
+stampede.pl
 ========
 
-.. automodule:: stamp.pl
+.. automodule:: stampede.pl
    :members:
    :undoc-members:
    :show-inheritance:
 
-stamp.tl
+stampede.tl
 ========
 
-.. automodule:: stamp.tl
+.. automodule:: stampede.tl
    :members:
    :undoc-members:
    :show-inheritance:
@@ -37,5 +37,5 @@ stamp.tl
 Configuration
 =============
 
-.. autodata:: stamp.config
+.. autodata:: stampede.config
    :annotation:

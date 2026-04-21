@@ -1,6 +1,6 @@
-# Unnamed stamp processing package
+# STAMPede - STAMP data Exploration and Differential Expression
 
-[![Documentation](https://github.com/siebrenf/stamp/actions/workflows/docs.yml/badge.svg)](https://github.com/siebrenf/stamp/actions/workflows/docs.yml)
+[![Documentation](https://github.com/siebrenf/stampede/actions/workflows/docs.yml/badge.svg)](https://github.com/siebrenf/stampede/actions/workflows/docs.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 Work in progress.
@@ -27,29 +27,29 @@ This package is not available on pip/conda yet.
 
 Clone the repo
 ```bash
-git clone https://github.com/siebrenf/stamp.git
+git clone https://github.com/siebrenf/stampede.git
 ```
 
 Create a conda environment
 ```bash
-conda env create -n stamp -f stamp/requirements.yaml
+conda env create -n stampede -f stampede/requirements.yaml
 ```
 
 Activate the conda environment
 ```bash
-conda activate stamp
+conda activate stampede
 ```
 
 Install the package
 ```bash
-pip install -e stamp
+pip install -e stampede
 ```
 
 
 
 ## Documentation
 
-Check out [our GitHub pages](https://siebrenf.github.io/stamp/index.html)!
+Check out [our GitHub pages](https://siebrenf.github.io/stampede/index.html)!
 
 ## Usage
 

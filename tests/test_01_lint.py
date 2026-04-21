@@ -17,12 +17,12 @@ def test_lint():
     base = dirname(dirname(__file__))
     sp.check_output(
         "black "
-        + f"{join(base, 'stamp')} {join(base, 'tests')} "
+        + f"{join(base, 'stampede')} {join(base, 'tests')} "
         + f"{join(base, 'tutorial.ipynb')} ",
         shell=True,
     )
     sp.check_output(
         "isort --overwrite-in-place --profile black --conda-env requirements.yaml "
-        + f"{join(base, 'stamp')} {join(base, 'tests')} ",
+        + f"{join(base, 'stampede')} {join(base, 'tests')} ",
         shell=True,
     )

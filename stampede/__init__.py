@@ -1,4 +1,4 @@
-"""STAMP analysis mediating package"""
+"""STAMPede - STAMP data Exploration and Differential Expression"""
 
 from . import pl, pp, tl
 from ._config import config
