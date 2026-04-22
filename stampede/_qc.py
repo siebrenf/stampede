@@ -628,7 +628,7 @@ def plot_avg_per_pixel(
             grid_n[y_start:y_end, x_start:x_end] += 1
 
         # average the value over the number of cells
-        np.clip(grid_n, min=1, out=grid_n)
+        np.clip(grid_n, min=1, max=None, out=grid_n)
         grid = grid / grid_n
     if log1p:
         grid = np.log1p(grid)

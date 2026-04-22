@@ -11,7 +11,9 @@ def sketch(
     frac: float = 0.05,
     use_rep: str = "X_svd",
     obs_column: str = "subset",
+    random_seed: int = 42,
     return_subset: bool = False,
+    **kwargs,
 ) -> ad.AnnData | None:
     """
     Subset the cells in adata using GeoSketch.
@@ -22,7 +24,9 @@ def sketch(
         frac: the fraction of cells to keep. Only used if `n` is None.
         use_rep: use the indicated representation.
         obs_column: add this column to adata.obs with boolean values if the cell is kept.
+        random_seed: random seed passed to numpy.
         return_subset: if True, return a subset adata object.
+        kwargs: kwargs passed to `geosketch.gs`.
 
     Returns:
          The subset anndata object (if specified)
@@ -32,7 +36,7 @@ def sketch(
 
     if n is None:
         n = round(len(adata) * frac)
-    sketch_index = gs(adata.obsm[use_rep], n, replace=False)
+    sketch_index = gs(adata.obsm[use_rep], n, replace=False, seed=random_seed, **kwargs)
     adata.obs[obs_column] = adata.obs.index.isin(adata.obs.iloc[sketch_index].index)
 
     if return_subset:
@@ -46,7 +50,7 @@ def plot_sketch(
     obs_column: str = "subset",
     use_rep: str = "X_svd",
     plot_kwargs: dict = None,
-) -> tuple[matplotlib.figure.Figure, list[matplotlib.axes.Axes]]:
+) -> tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]:
     """
     Scatterplot highlighting the cells that were sampled.
     Requires the full adata object.
@@ -60,6 +64,11 @@ def plot_sketch(
     Returns:
         matplotlib figure and array of axes
     """
+    if plot_kwargs is None:
+        plot_kwargs = {"alpha": 0.4}
+    if not isinstance(obs_column, str):
+        raise TypeError("Argument 'obs_column' must be a string")
+
     adata.uns[f"{obs_column}_colors"] = [
         "#dadafe",  # light blue (False/discarded)
         "#000000",  # black (True/selected)
@@ -67,5 +76,6 @@ def plot_sketch(
     fig = sc.pl.embedding(
         adata, color=obs_column, basis=use_rep, return_fig=True, **plot_kwargs
     )
-    axs = fig.axes
-    return fig, axs
+    ax = fig.axes[0]
+    ax.set_title(f"{obs_column} (n={sum(adata.obs[obs_column]):_})")
+    return fig, ax

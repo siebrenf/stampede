@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 
+import anndata as ad
 import matplotlib.figure
 import numpy as np
 import pandas as pd
@@ -13,28 +14,26 @@ from matplotlib import pyplot as plt
 
 def paired_binomial_glm(
     df: pd.DataFrame,
+    adata: ad.AnnData,
+    samples_column: str,
     test_condition: str,
     reference_condition: str,
     condition_column: str = "condition",
-    gene_column: str = None,
-    detection_column: str = "detection_rate",
     covariate_columns: str = None,
-    total_column: str = None,
 ) -> pd.DataFrame | None:
     """
     Runs paired donor-level binomial GLM:
         gene_detection_rate ~ condition + covariate(s)
 
     Args:
-        df: dataframe
+        df: dataframe with detection rates per gene per sample
+        adata: the adata from which the detection rates were obtained
+        samples_column: the column in adata.obs from which the detection rate df
+         column names were obtained
         test_condition: the condition to compare (e.g., "treated")
         reference_condition: the baseline condition (e.g., "control")
         condition_column: column with the condition
-        gene_column: column with gene names (e.g. "gene"). If None, use the index.
-        detection_column: column with the gene detection rates
         covariate_columns: column(s) with covariates (e.g. "donor")
-        total_column: column with total cells per sample (e.g. "ncells").
-         Used to give weight to each gene. Unused if None.
 
     Returns:
         per-gene results including beta, odds_ratio, pval, padj
@@ -45,25 +44,24 @@ def paired_binomial_glm(
     from statsmodels.stats.multitest import multipletests  # noqa
     from statsmodels.tools.sm_exceptions import PerfectSeparationWarning  # noqa
 
-    if covariate_columns is None:
-        covariate_columns = []
-    elif isinstance(covariate_columns, str):
-        covariate_columns = [covariate_columns]
+    df = df.copy().stack().reset_index()
+    df.columns = ["gene", samples_column, "detection_rate"]
+
+    subset = adata.obs[[samples_column, condition_column]]
+    sample2condition = subset.set_index(samples_column)[condition_column].to_dict()
+    df[condition_column] = df[samples_column].map(sample2condition)
+
+    sample2ncells = adata.obs[samples_column].value_counts().to_dict()
+    df["ncells"] = df[samples_column].replace(sample2ncells)
+
+    string_cols = df.select_dtypes(include="object").columns
+    df[string_cols] = df[string_cols].astype("category")
 
     unique_conditions = df[condition_column].unique()
     if reference_condition not in unique_conditions:
         raise ValueError(f"{reference_condition=} not found in dataframe")
     if test_condition not in unique_conditions:
         raise ValueError(f"{test_condition=} not found in dataframe")
-
-    df = df.copy()
-
-    if gene_column is None:
-        if df.index.name:
-            gene_column = df.index.name
-        else:
-            gene_column = "index"
-        df.reset_index(inplace=True)
 
     # re-level the condition column so the reference condition is the baseline
     df = df[df[condition_column].isin(unique_conditions)]
@@ -72,12 +70,20 @@ def paired_binomial_glm(
         categories=[reference_condition, test_condition],
         ordered=True,
     )
+    df.dropna(subset=condition_column, inplace=True)
 
+    if covariate_columns is None:
+        covariate_columns = []
+    elif isinstance(covariate_columns, str):
+        covariate_columns = [covariate_columns]
+
+    # add all covariate columns and
     # ensure all batch and covariate columns are categorical
     for col in covariate_columns:
-        df[col] = df[col].astype(str).astype("category")
+        s2c = subset.set_index(samples_column)[col].to_dict()
+        df[col] = df[samples_column].map(s2c).astype(str).astype("category")
 
-    design_formula = f"{detection_column} ~ " + " + ".join(
+    design_formula = "detection_rate ~ " + " + ".join(
         [condition_column] + covariate_columns
     )
 
@@ -87,12 +93,11 @@ def paired_binomial_glm(
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always", PerfectSeparationWarning)
 
-                weights = gene_df[total_column] if total_column else None
                 model = smf.glm(
                     formula=design_formula,
                     data=gene_df,
                     family=sm.families.Binomial(),
-                    var_weights=weights,
+                    var_weights=gene_df["ncells"],
                 )
                 result = model.fit()
 
@@ -135,18 +140,18 @@ def paired_binomial_glm(
 
     # run across genes
     results = (
-        df.groupby(gene_column, group_keys=False, observed=False)
+        df.groupby("gene", group_keys=False, observed=False)
         .apply(fit_one_gene, include_groups=False)
         .reset_index()
     )
 
     # drop failed fits
-    results = results.dropna(subset=["pval"])
+    results.dropna(subset=["pval"], inplace=True)
     if len(results) == 0:
         return None
 
     results["padj"] = multipletests(results["pval"], method="fdr_bh")[1]
-    results["-log10(padj)"] = -np.log10(np.clip(results["padj"], 1e-9))
+    results["-log10(padj)"] = -np.log10(np.clip(results["padj"], 1e-9, None))
     results["log2(odds_ratio)"] = np.log2(results["odds_ratio"])
     results.sort_values("odds_ratio", inplace=True)
 
@@ -162,12 +167,8 @@ def paired_binomial_glm(
     return results
 
 
-def plot_paired_binomial_glm_volcano(
+def paired_binomial_glm_volcano(
     df: pd.DataFrame,
-    gene_column: str = None,
-    or_column: str = "odds_ratio",
-    pvalue_column: str = "padj",
-    separation_column: str = "perfect_separation",
     drop_perfect_separation: bool = True,
     pval_thresh: float = 0.05,
     or_thresh: float = 0.75,
@@ -181,10 +182,6 @@ def plot_paired_binomial_glm_volcano(
 
     Args:
         df: a dataframe
-        gene_column: column with gene names (e.g. "gene"). If None, use the index.
-        or_column: column with odds ratios
-        pvalue_column: column name of the adjusted p values to be converted to -log10 p-values
-        separation_column: column with perfect separation data
         drop_perfect_separation: whether to drop the genes with perfect separations
         pval_thresh: threshold pvalue_column for points to be significant
         or_thresh: threshold for the log2 odds ratios to be considered significant
@@ -203,18 +200,15 @@ def plot_paired_binomial_glm_volcano(
         plot_kwargs = {}
     if text_kwargs is None:
         text_kwargs = {}
+    gene_column = "gene"
+    or_column = "odds_ratio"
+    pvalue_column = "padj"
+    separation_column = "perfect_separation"
 
     df = df.copy().dropna(subset=[pvalue_column, or_column, separation_column])
 
     if df[pvalue_column].min() == 0:
         df[pvalue_column][df[pvalue_column] == 0] = 1e-9
-
-    if gene_column is None:
-        if df.index.name:
-            gene_column = df.index.name
-        else:
-            gene_column = "index"
-        df.reset_index(inplace=True)
 
     # rng = np.random.default_rng(42)
     #
@@ -299,7 +293,7 @@ def plot_paired_binomial_glm_volcano(
     sns.scatterplot(
         df,
         x="log2(odds_ratio)",
-        y="-log(padj)",
+        y="-log10(padj)",
         hue="change",
         palette=dir2color,
         ax=ax,
@@ -345,9 +339,9 @@ def plot_paired_binomial_glm_volcano(
 
     texts = []
     for gene in top_up + top_down:
-        x, y = df.loc[df[gene_column] == gene][["log2(odds_ratio)", "-log(padj)"]].iloc[
-            0, 0:2
-        ]
+        x, y = df.loc[df[gene_column] == gene][
+            ["log2(odds_ratio)", "-log10(padj)"]
+        ].iloc[0, 0:2]
         txt = ax.text(
             x=x,
             y=y,
