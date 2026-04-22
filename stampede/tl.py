@@ -1,6 +1,8 @@
 """analysis tools"""
 
-from ._analyses import paired_binomial_glm, pydeseq2, sketch
+from ._tools.geosketch import sketch
+from ._tools.pydeseq2 import pydeseq2
+from ._tools.statsmodels import paired_binomial_glm
 
 __all__ = [
     "sketch",

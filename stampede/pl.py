@@ -1,8 +1,5 @@
 """plotting functions"""
 
-from ._analyses import plot_paired_binomial_glm_volcano as paired_binomial_glm_volcano
-from ._analyses import plot_pydeseq2_volcano as pydeseq2_volcano
-from ._analyses import plot_sketch as sketch
 from ._dim_red import plot_dim_red as dim_red
 from ._dim_red import plot_scree as scree
 from ._qc import plot_2d_correlations as correlations
@@ -12,6 +9,11 @@ from ._qc import plot_ncell_per_condition as ncell_per_condition
 from ._qc import plot_slide_qc as slide_qc
 from ._qc import plot_value_distribution as value_distribution
 from ._qc import plot_violin as violin
+from ._tools.geosketch import plot_sketch as sketch
+from ._tools.pydeseq2 import plot_pydeseq2_volcano as pydeseq2_volcano
+from ._tools.statsmodels import (
+    plot_paired_binomial_glm_volcano as paired_binomial_glm_volcano,
+)
 
 __all__ = [
     "slide_qc",
