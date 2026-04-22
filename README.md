@@ -1,6 +1,10 @@
-# Unnamed stamp processing package
+# STAMPede - STAMP data Exploration and Differential Expression
 
-Work in progress.
+[![Documentation](https://github.com/siebrenf/stampede/actions/workflows/docs.yml/badge.svg)](https://github.com/siebrenf/stampede/actions/workflows/docs.yml)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+Process & analyse [STAMP data](https://doi.org/10.1016/j.cell.2025.05.027) with ease!
+STAMPede is built to handle huge datasets with shallow depth, using syntax familiar to `scanpy` users. 
 
 
 
@@ -9,39 +13,54 @@ Work in progress.
 1.  [Installation](#installation)
 2.  [Developer installation](#developer-installation)
 3.  [Usage](#usage)
+4.  [Citation](#citation)
 
 
 
 ## Installation
 
-This package is not available on pip/conda yet.
+### Pip/Conda
+
+`stampede` is not yet available on pip/conda.
 
 
 
-## Developer installation
+### Developer installation
 
 Clone the repo
-```commandline
-git clone https://github.com/siebrenf/stamp.git
+```bash
+git clone https://github.com/siebrenf/stampede.git
 ```
 
 Create a conda environment
-```commandline
-conda env create -n stamp -f stamp/requirements.yaml
+```bash
+conda env create -n stampede -f stampede/requirements.yaml
 ```
 
 Activate the conda environment
-```commandline
-conda activate stamp
+```bash
+conda activate stampede
 ```
 
 Install the package
-```commandline
-pip install -e stamp
+```bash
+pip install -e stampede
 ```
+
+
+
+## Documentation
+
+Check out our [GitHub pages](https://siebrenf.github.io/stampede/index.html)!
 
 
 
 ## Usage
 
-Follow along with `tutorial.ipynb`
+Follow along with the [tutorial.ipynb](tutorial.ipynb)!
+
+
+
+## Citation
+
+If you used STAMPede in your work, please cite it.

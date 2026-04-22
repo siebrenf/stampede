@@ -1,26 +1,36 @@
-name: stamp
+name: stampede
 channels:
   - conda-forge
   - bioconda
 dependencies:
-  - adjusttext
+  - adjustText
   - anndata
-  - h5py
+#  - h5py
   - matplotlib
-  - mygene
   - natsort
   - numpy
   - pandas <3  # anndata 0.12 cannot handle string columns
-  - pydeseq2
   - python >=3.12  # f-strings
+  - python-igraph  # sc.tl.leiden
   - scanpy
   - scikit-learn
   - scipy
   - seaborn
+
+# tools
+  - geosketch
+  - pydeseq2
   - statsmodels
-optional_dependencies:
-  test:
-    - black
-    - isort
-    - ipykernel
-    - pytest
+
+# docs
+  - m2r2 >=0.3.2
+  - myst-nb
+  - pydata-sphinx-theme >=0.17.1
+  - sphinx
+  - sphinx-autodoc-typehints
+
+# test
+  - black
+  - ipykernel
+  - isort
+  - pytest

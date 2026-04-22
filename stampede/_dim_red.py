@@ -1,17 +1,59 @@
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+import anndata as ad
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from matplotlib.typing import ColorType
 from sklearn.decomposition import TruncatedSVD
 
 
-def pca(
-    adata,
-    n_dims=50,
-    random_state=42,
-):
-    X = adata.layers["binary"]
+def dim_red(
+    adata: ad.AnnData,
+    n_dims: int = 50,
+    key_added: str = None,
+    random_state: int = 42,
+) -> None:
+    """
+    Dimensionality reduction using Term Frequency Latent Semantic Indexing.
+
+    Args:
+        adata: adata object
+        n_dims: number of PCs to use (default: 50)
+        key_added: key in adata.obsm for function output (default: "X_svd")
+        random_state: random seed value
+
+    Returns:
+        Nothing, updates adata.obsm and adata.uns
+    """
+    if key_added is None:
+        key_added = "X_svd"
+    prefix, uns_key = key_added.split("_", 1)
+    if prefix != "X" or len(uns_key) == 0:
+        raise ValueError(f"{key_added=} must start with 'X_', e.g. 'X_svd'")
+
+    layer = "binary"
+    if layer not in adata.layers:
+        raise KeyError(
+            f"{layer=} not found in adata.layers. Please run st.pp.binarize first!"
+        )
+    X = adata.layers[layer]
+    if "nFeature_RNA_postfilter" not in adata.obs.columns:
+        raise KeyError(
+            "nFeature_RNA_postfilter not in adata.obs. "
+            "Please run st.pp.cell_qc_postfilter first!"
+        )
     cell_sums = adata.obs["nFeature_RNA_postfilter"].to_numpy(dtype=np.float32)
+    if "nCell_postfilter" not in adata.var.columns:
+        raise KeyError(
+            "nCell_postfilter not in adata.var. "
+            "Please run st.pp.gene_qc_postfilter first!"
+        )
     gene_counts = adata.var["nCell_postfilter"].to_numpy(dtype=np.float32)
     n_cells = X.shape[0]
 
@@ -27,15 +69,29 @@ def pca(
     svd = TruncatedSVD(n_components=n_dims + 1, random_state=random_state)
 
     # Drop 1st dimension, is not informative (like scATAC; this case expl var 200-fold lower than 2nd dim)
-    adata.obsm["X_svd"] = svd.fit_transform(X_tfidf)[:, 1:]
-    adata.uns["svd"] = {
+    adata.obsm[key_added] = svd.fit_transform(X_tfidf)[:, 1:]
+    adata.uns[uns_key] = {
         "idf": idf,
         "explained_variance_ratio": svd.explained_variance_ratio_[1:],
     }
 
 
-def scree_plot(adata):
-    evr = adata.uns["svd"]["explained_variance_ratio"]
+def plot_scree(adata: ad.AnnData, obsm_key: str = None) -> tuple[Figure, Axes]:
+    """
+    Scree plot
+
+    Args:
+        adata: adata object
+        obsm_key: key in adata.obsm with dim_red output (default: "X_svd")
+
+    Returns:
+        matplotlib figure and array of axes
+    """
+    if obsm_key is None:
+        obsm_key = "X_svd"
+    uns_key = obsm_key.split("_", 1)[1]
+
+    evr = adata.uns[uns_key]["explained_variance_ratio"]
     xs = [i + 1 for i in range(len(evr))]
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 3))
@@ -51,39 +107,60 @@ def scree_plot(adata):
     return fig, ax
 
 
-def plot_pca(
-    adata,
-    color,
-    cmap="tab10",
-    ndims=6,
-    subset_size=1_000,
-    random_state=42,
-):
+def plot_dim_red(
+    adata: ad.AnnData,
+    columns: str | Iterable,
+    obsm_key: str = None,
+    cmap: ColorType = "tab10",
+    n_dims: int = 6,
+    subset_size: int = 1_000,
+    random_state: int = 42,
+) -> list[tuple[Figure, Axes]]:
+    """
+    Scree plot
+
+    Args:
+        adata: adata object
+        columns: one or more columns in adata.obs to plot. One multiplot per column.
+        obsm_key: key in adata.obsm with dim_red output (default: "X_svd")
+        cmap: colormap
+        n_dims: number of PCs to use (default: 50)
+        subset_size: subsample the data to this number (per column)
+        random_state: random seed value
+
+    Returns:
+        a list of tuples with matplotlib figure and axis
+    """
+    if obsm_key is None:
+        obsm_key = "X_svd"
+    uns_key = obsm_key.split("_", 1)[1]
+
     cmap = plt.get_cmap(cmap)
-    if isinstance(color, str):
-        color = [color]
+    if isinstance(columns, str):
+        columns = [columns]
 
-    data = adata.obs[color].copy()
-    data[[str(dim + 1) for dim in range(ndims)]] = adata.obsm["X_svd"][:, :ndims]
-    evr_array = adata.uns["svd"]["explained_variance_ratio"]
+    data = adata.obs[columns].copy()
+    data[[str(dim + 1) for dim in range(n_dims)]] = adata.obsm[obsm_key][:, :n_dims]
+    evr_array = adata.uns[uns_key]["explained_variance_ratio"]
 
-    for c in color:
+    ret = []
+    for c in columns:
         df = data
         if subset_size:
             n = subset_size * len(data[c].unique())
             if len(data) > n:
                 df = data.groupby(c).sample(n=n, random_state=random_state)
         levels, categories = pd.factorize(df[c])
-        colors = [cmap.colors[i] for i in levels]
+        colors = [cmap.colors[i] for i in levels]  # noqa
 
         # plot the upper triangle of a cross correlation matrix of PCs
         # excluding the diagonal
         fig, axs = plt.subplots(
-            nrows=ndims - 1,
-            ncols=ndims - 1,
+            nrows=n_dims - 1,
+            ncols=n_dims - 1,
             figsize=(
-                (ndims - 1) * 3,
-                (ndims - 1) * 3,
+                (n_dims - 1) * 3,
+                (n_dims - 1) * 3,
             ),
             # gridspec_kw={'wspace': 0, 'hspace': 0},
             tight_layout=True,
@@ -91,9 +168,9 @@ def plot_pca(
         fig.suptitle(c, fontweight="bold")
         n = fig._suptitle.get_fontsize()  # noqa
         fig._suptitle.set_fontsize(n + 10)  # noqa
-        for row in range(0, ndims - 1):
+        for row in range(0, n_dims - 1):
             row_label = str(row + 1)
-            for col in range(0, ndims - 1):
+            for col in range(0, n_dims - 1):
                 col_label = str(col + 2)
                 ax = axs[row, col]
 
@@ -124,7 +201,7 @@ def plot_pca(
                             ax.set_xlabel(f"Dim {col_label} ({evr})")
                         ax.xaxis.set_label_position("top")
                         ax.spines["top"].set_visible(True)
-                    if col == ndims - 2:
+                    if col == n_dims - 2:
                         evr = np.format_float_scientific(
                             evr_array[int(row_label)],
                             precision=2,
@@ -141,13 +218,13 @@ def plot_pca(
         handles = []
         for i, cat in enumerate(categories):
             patch = mpatches.Patch(
-                color=cmap.colors[i],
+                color=cmap.colors[i],  # noqa
                 label=cat,
             )
             handles.append(patch)
         ax.legend(handles=handles, loc="center", title=c)
         ax.axis("off")
 
-        plt.show()
+        ret.append((fig, ax))
 
-    return
+    return ret
