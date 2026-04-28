@@ -191,55 +191,36 @@ def _add_samples_df_metadata(obs, samples_df, slide, columns=None):
         columns.remove("slide")
 
     sdf = samples_df.loc[samples_df["slide"] == slide]
-
-    # start = sdf["fov_start"].to_numpy()
-    # end = sdf["fov_end"].to_numpy()
     fov2sample = _fovranges_to_dict(sdf)
-    # sample = sdf["sample"].to_numpy()
-    # fov = obs["fov"].to_numpy(copy=False)
-
-    # # find candidate interval
-    # idx = np.searchsorted(start, fov, side="right") - 1
-    #
-    # # check if fov actually falls inside interval
-    # valid = (idx >= 0) & (fov <= end[np.clip(idx, 0, None)])
-
-    # # create sample column
-    # result = np.empty(len(fov), dtype=object)
-    # result[:] = None
-    # result[valid] = sample[idx[valid]]
-    obs["sample"] = obs["fov"].replace(dict=fov2sample)
+    obs["sample"] = obs["fov"].replace(fov2sample)
 
     # merge samples_df to obs
     obs = obs.merge(sdf[columns], on="sample", how="left")
     return obs
 
 
-def _parse_ranges(s):
-    out = []
-    ranges = s.split(",")
-    for item in ranges:
-        if len(item) == 0:
-            continue
-        else:
-            if not "-" in item:
-                out.append(int(item))
-            else:
-                start, end = item.split("-")
-                out += [i for i in range(int(start), int(end)+1)]
-    return out
-
-
-def _fovranges_to_dict(sdf):
-    fov2sample={}
-
-    for _, row in sdf.iterrows():
+def _fovranges_to_dict(df):
+    fov2sample = {}
+    for _, row in df.iterrows():
         sample = row["sample"]
         fovs = _parse_ranges(row["fovs"])
         for fov in fovs:
             fov2sample[fov] = sample
-
     return fov2sample
+
+
+def _parse_ranges(s):
+    out = []
+    ranges = s.replace(" ", "").split(",")
+    for item in ranges:
+        if len(item) == 0:
+            continue
+        if "-" not in item:
+            out.append(int(item))
+        else:
+            start, end = item.split("-")
+            out += list(range(int(start), int(end) + 1))
+    return out
 
 
 def _add_metadata(obs, file_md, slide, columns=None, data_dir: str = None, **kwargs):
