@@ -4,7 +4,6 @@ import os
 import warnings
 
 import anndata as ad
-import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
@@ -104,6 +103,21 @@ def read_cosmx(
 
     adatas = []
     for slide, files in slides.items():
+        if verbose:
+            print(f"Slide {slide}/{len(slides)} starting...")
+
+        # filename to write slide-specific adata object to
+        dirname = os.path.dirname(adata_file)
+        basename = os.path.basename(adata_file)
+        base, suffix = basename.split(".h5ad")
+        adata_file_slide = os.path.join(dirname, f".{base}_slide{slide}.h5ad{suffix}")
+
+        adatas.append(adata_file_slide)
+        if overwrite is False and os.path.exists(adata_file_slide):
+            if verbose:
+                print(f"Slide {slide}/{len(slides)} done!\n")
+            continue
+
         fname = os.path.join(data_dir, files["exprmat"])
 
         # get the gene columns from the exprMat_file
@@ -137,22 +151,33 @@ def read_cosmx(
                 var=pd.DataFrame(index=columns),
             )
 
-        # write adata object to file
-        dirname = os.path.dirname(adata_file)
-        basename = os.path.basename(adata_file)
-        base, suffix = basename.split(".h5ad")
-        adata_file_slide = os.path.join(dirname, f".{base}_slide{slide}.h5ad{suffix}")
+        # remove FOVs that were not assigned to any sample
+        fovs_before = set(adata.obs["fov"])
+        n_cells_before = len(adata.obs)
+        adata = adata[adata.obs["sample"].isin(samples_df["sample"]), :].copy()
+        fovs_after = set(adata.obs["fov"])
+        n_cells_after = len(adata.obs)
+        n_cells_dropped = n_cells_before - n_cells_after
+        if verbose and n_cells_dropped > 0:
+            fovs_dropped = fovs_before - fovs_after
+            n_fovs_dropped = len(fovs_dropped)
+            print(
+                f"Removed {n_cells_dropped:_} cells from {n_fovs_dropped:_} FOVs "
+                "that are missing from samples_df['fovs']."
+            )
+            print(f"Missing FOVs: {sorted(fovs_dropped)}.")
+
+        # write slide specific adata object to file
         adata.write_h5ad(adata_file_slide)
-        adatas.append(adata_file_slide)
 
         # free memory
         del adata, obs, columns
         if verbose:
-            print(f"slide {slide}/{len(slides)} done")
+            print(f"Slide {slide}/{len(slides)} done!\n")
 
     # concatenate all adatas
     if len(adatas) == 0:
-        raise ValueError("No data to concatenate")
+        raise ValueError("No data to concatenate!")
     elif len(adatas) == 1:
         os.rename(adatas[0], adata_file)
     else:
@@ -172,13 +197,13 @@ def _add_x(fname, columns, chunksize=50_000, verbose=True, **kwargs):
         # Convert to sparse matrix
         sparse_blocks.append(sp.csr_matrix(chunk.values))
         if verbose:
-            print(i * chunksize, "rows parsed")
+            print(f"{round(i * chunksize):_} rows parsed")
             i += 1
 
     # Stack all chunks vertically
     X = sp.vstack(sparse_blocks, format="csr")
     if verbose:
-        print(i * chunksize, "rows parsed")
+        print(f"{round(i * chunksize):_} rows parsed")
     return X
 
 
@@ -215,11 +240,19 @@ def _parse_ranges(s):
     for item in ranges:
         if len(item) == 0:
             continue
-        if "-" not in item:
-            out.append(int(item))
-        else:
-            start, end = item.split("-")
-            out += list(range(int(start), int(end) + 1))
+        try:
+            if "-" not in item:
+                out.append(int(item))
+            else:
+                i1, i2 = item.split("-")
+                start, end = sorted([int(i1), int(i2)])
+                out.extend(range(start, end + 1))
+        except (TypeError, ValueError) as e:
+            print(
+                f"FOV (range) '{item}' not recognized! FOVs must be written as ranges "
+                f"(e.g. 1-3) or integers, and are comma separated (e.g.: 1-3,6)."
+            )
+            raise e
     return out
 
 

@@ -85,16 +85,19 @@ def slide_qc(adata: ad.AnnData, slides: dict, data_dir: str = None) -> None:
         adata.obs.groupby("slide-fov", observed=False)["Area.um2"].sum()
         / fov_df["nCell"]
     )
-    slidefov2passfail = (
-        adata.obs.groupby("slide-fov", observed=False)["qcFlagsFOV"].first().to_dict()
-    )
-    fov_df = fov_df.reset_index()
-    fov_df["Failed_AtoMX_QC"] = (
-        fov_df["slide-fov"]
-        .replace(slidefov2passfail)
-        .replace({"Pass": "0", "Fail": "1"})
-        .astype(int)
-    )
+    if "Failed_AtoMX_QC" in adata.obs:
+        slidefov2passfail = (
+            adata.obs.groupby("slide-fov", observed=False)["qcFlagsFOV"]
+            .first()
+            .to_dict()
+        )
+        fov_df = fov_df.reset_index()
+        fov_df["Failed_AtoMX_QC"] = (
+            fov_df["slide-fov"]
+            .replace(slidefov2passfail)
+            .replace({"Pass": "0", "Fail": "1"})
+            .astype(int)
+        )
     adata.uns["fov_metadata"] = fov_df
 
     # determine the dimensions of the camera's FOV
@@ -223,8 +226,8 @@ def _fov_dimensions(fov_df):
             last_x = x
             last_y = y
     # median distance between 2 FOVs in pixels
-    x_px = sorted(dx)[len(dx) // 2]
-    y_px = sorted(dy)[len(dy) // 2]
+    x_px = round(sorted(dx)[len(dx) // 2])
+    y_px = round(sorted(dy)[len(dy) // 2])
     return x_px, y_px
 
 
@@ -562,6 +565,7 @@ def plot_avg_per_pixel(
     adata: ad.AnnData,
     column: str,
     fill_cell_area: bool = False,
+    normalize_cell_area: bool = True,  # causes edge effects
     log1p: bool = False,
     cmap: ColorType = None,
     background_color: ColorType = None,
@@ -578,6 +582,8 @@ def plot_avg_per_pixel(
         column: a column in adata.obs with numeric values
         fill_cell_area: distribute the column value over all pixels covered by the cell,
          assuming square cells (default: False)
+        normalize_cell_area: if fill_cell_area is True, normalize the column value
+         over the cell area (default: True)
         log1p: normalize the final values per pixel?
         cmap: colormap (default: "gist_rainbow")
         background_color: color for pixels with 0 values (default: "black")
@@ -613,8 +619,10 @@ def plot_avg_per_pixel(
     else:
         grid_n = grid.copy()
         for _, row in adata.obs.iterrows():
-            # divide the column value over the area of the cell
-            val = row[column] / (row["Width"] * row["Height"])  # row['Area']
+            val = row[column]
+            if normalize_cell_area:
+                # divide the column value over the area of the cell
+                val = val / (row["Width"] * row["Height"])  # row['Area']
 
             # add the normalized value to all pixels
             half_w = row["Width"] // 2
@@ -686,16 +694,16 @@ def plot_avg_per_pixel(
     )
 
     # Lineplot
-    axs[1].set_title(f"Sum of values per row/column")
-    x_sum = np.sum(grid, axis=0)
-    y_sum = np.sum(grid, axis=1)
-    max_sum = max(max(y_sum), max(x_sum))
+    axs[1].set_title(f"Mean of values per row/column")
+    x_average = np.average(grid, axis=0)
+    y_average = np.average(grid, axis=1)
+    max_average = max(max(y_average), max(x_average))
     axs[1].set_xlim(-x_max * 0.02, x_max * 1.02)
-    axs[1].set_ylim(-max_sum * 0.02, max_sum * 1.02)
-    axs[1].plot(x_sum, label="x")
-    axs[1].plot(y_sum, label="y")
+    axs[1].set_ylim(-max_average * 0.02, max_average * 1.02)
+    axs[1].plot(x_average, label="x")
+    axs[1].plot(y_average, label="y")
     axs[1].set_box_aspect(1)
-    axs[1].set_ylabel("sum(values)")
+    axs[1].set_ylabel("mean(values)")
     axs[1].set_xlabel("axis coordinate")
     axs[1].legend()
 
