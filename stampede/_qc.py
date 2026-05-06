@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools
 import os
 from collections.abc import Iterable
+from collections.abc import Sequence
 
 import anndata as ad
 import matplotlib.pyplot as plt
@@ -15,10 +16,15 @@ from matplotlib.colorbar import ColorbarBase
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 from matplotlib.typing import ColorType
+from matplotlib.ticker import MultipleLocator
 from natsort import natsort_keygen, natsorted
 
 
-def slide_qc(adata: ad.AnnData, slides: dict, data_dir: str = None) -> None:
+def slide_qc(adata: ad.AnnData,
+             slides: dict,
+             data_dir: str = None,
+             add_str_cols = None,
+) -> None:
     """
     Use the fov_positions file to create a dataframe with metadata columns per slide
     and fov, and store this in adata.uns["fov_metadata"].
@@ -98,6 +104,12 @@ def slide_qc(adata: ad.AnnData, slides: dict, data_dir: str = None) -> None:
             .replace({"Pass": "0", "Fail": "1"})
             .astype(int)
         )
+
+    if add_str_cols is not None:
+        for col in add_str_cols:
+            # Take most-occuring value in col per slide-fov:
+            fov_df[col] = adata.obs.groupby("slide-fov", observed=False)[col].agg(lambda x: x.mode()[0])
+    
     adata.uns["fov_metadata"] = fov_df
 
     # determine the dimensions of the camera's FOV
@@ -119,8 +131,8 @@ def slide_qc(adata: ad.AnnData, slides: dict, data_dir: str = None) -> None:
 
 def gene_qc(
     adata: ad.AnnData,
-    signal2noise_threshold: float | Iterable = None,
     mult: int | float = 1,
+    noise_threshold: float | Iterable = None,
     overwrite: bool = False,
 ) -> None:
     r"""
@@ -133,15 +145,15 @@ def gene_qc(
 
         Calculate the mean expression and standard deviation of the negative control
         probes.
-        Remove genes with average expression < mean + mult\* x STD of ctrl probes.
+        Flag genes with average expression < mean + mult\* x STD of ctrl probes.
 
         \*the paper used mult=2
 
     Args:
         adata: an adata object
-        signal2noise_threshold: manually specify the threshold.
+        noise_threshold: manually specify the mimimum meanTranscript threshold.
          If None, use the filter specified above.
-        mult: if signal2noise_threshold is None, mult is used in the signal2noise
+        mult: if noise_threshold is None, mult is used in the noise
          threshold computation specified above.
         overwrite: overwrite existing qc columns (default: False)
 
@@ -160,11 +172,13 @@ def gene_qc(
         adata.var["nTranscript"] = np.array(adata.X.sum(axis=0)).ravel()
     if "meanTranscript" not in adata.var.columns or overwrite:
         adata.var["meanTranscript"] = adata.var["nTranscript"] / adata.n_obs
-    if "signal2noise" not in adata.var.columns or overwrite:
-        if signal2noise_threshold is None:
+    # if "signal2noise" not in adata.var.columns or overwrite:
+    if "above_noise" not in adata.var.columns or overwrite:
+        if noise_threshold is None:
             negctrls = adata.var.loc[adata.var["is_negctrl"], "meanTranscript"]
-            signal2noise_threshold = negctrls.mean() + mult * negctrls.std()
-        adata.var["signal2noise"] = adata.var["meanTranscript"] / signal2noise_threshold
+            noise_threshold = negctrls.mean() + mult * negctrls.std()
+            # adata.var["signal2noise"] = adata.var["meanTranscript"] / signal2noise_threshold
+        adata.var["above_noise"] = adata.var["meanTranscript"] > noise_threshold
 
 
 def gene_qc_postfilter(adata: ad.AnnData) -> None:
@@ -239,7 +253,7 @@ def plot_slide_qc(
     plot_kwargs: dict = None,
 ) -> tuple[Figure, list[Axes]]:
     """
-    Plot the values from one or QC columns in adata.uns["fov_metadata"]
+    Plot the values from one or more QC columns in adata.uns["fov_metadata"]
     (added by `slide_qc_data()`).
     Specify columns to limit the number of plots.
 
@@ -254,7 +268,7 @@ def plot_slide_qc(
         matplotlib figure and array of axes
     """
     if figsize is None:
-        figsize = (5, 4)
+        figsize = (2.5, 4)
     if subplot_kwargs is None:
         subplot_kwargs = {}
     if plot_kwargs is None:
@@ -273,68 +287,89 @@ def plot_slide_qc(
     slides = natsorted(fov_df["slide"].unique())
     blacklist = {"slide-fov", "slide", "fov", "x", "y"}
     qc_columns = [c for c in fov_df.columns if c not in blacklist]
-    nrows = len(slides)
+    nrows = len(slides) + 1
     ncols = len(qc_columns)
     fig, axs = plt.subplots(
         nrows=nrows,
         ncols=ncols,
         squeeze=False,
-        figsize=(figsize[0] * ncols, figsize[1] * nrows),
+        figsize=(figsize[0] * ncols, figsize[1] * nrows + 1),
         sharex=True,
         sharey=True,
-        gridspec_kw={"wspace": 0, "hspace": 0},
+        gridspec_kw={"wspace": 0, "hspace": 0, "height_ratios": [1.5, 4, 4]},
         layout="tight",
         **subplot_kwargs,
     )
     fig.supylabel("y", x=1.0, ha="right", rotation=0)
     fig.supxlabel("x")
+    
     for i_col, column in enumerate(qc_columns):
-        # normalize the colormap for all slides at once
-        norm = Normalize(vmin=fov_df[column].min(), vmax=fov_df[column].max())
-        for i_row, slide in enumerate(slides):
-            ax = axs[i_row, i_col]
+        if pd.api.types.is_numeric_dtype(fov_df[column]):
+            # normalize the colormap for all slides at once
+            norm = Normalize(vmin=fov_df[column].min(), vmax=fov_df[column].max())
+            palette="coolwarm"
+            show_legend=False
+        else:
+            norm = None
+            palette = "tab10"
+            show_legend=True
 
+        axs[0, i_col].axis("off")
+        
+        for i_row, slide in enumerate(slides):
+            ax = axs[i_row+1, i_col]
+            
             # main plot
             sns.scatterplot(
                 data=fov_df[fov_df["slide"] == slide],
                 x="x",
                 y="y",
                 hue=column,
-                palette="coolwarm",
+                palette=palette,
                 hue_norm=norm,
-                legend=False,
+                legend=show_legend,
                 ax=ax,
                 **plot_kwargs,
             )
+            if not pd.api.types.is_numeric_dtype(fov_df[column]):
+                handles, labels = ax.get_legend_handles_labels()
+                ax.get_legend().remove()
 
             # tweak all ticks, borders & labels
             ax.set_xlabel(None)
             ax.set_ylabel(None)
             ax.spines["top"].set_visible(False)
-            ax.spines["right"].set_visible(False)
-            if i_row == nrows - 1:
-                ax.spines["bottom"].set_visible(False)
-            if i_col == 0:
-                ax.spines["left"].set_visible(False)
+            ax.spines["bottom"].set_visible(False)
             ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
             if i_col == 0:
                 ax.set_ylabel(f"slide {slide}")
 
             # only plot the colorbar once per column
-            if i_row == 0:
-                sm = plt.cm.ScalarMappable(cmap="coolwarm", norm=norm)
-                sm.set_array([])
-                cbar = fig.colorbar(
-                    sm,
-                    location="top",
-                    orientation="horizontal",
-                    shrink=0.4,
-                    pad=0.1,
-                    aspect=30,
-                    ax=ax,
-                )
-                # colorbar label doubles as the figure title
-                cbar.set_label(column)
+            if i_row == 1:
+                if pd.api.types.is_numeric_dtype(fov_df[column]):
+                    sm = plt.cm.ScalarMappable(cmap="coolwarm", norm=norm)
+                    sm.set_array([])
+                    cbar = fig.colorbar(
+                        sm,
+                        location="bottom",
+                        orientation="horizontal",
+                        shrink=0.4,
+                        pad=0.1,
+                        aspect=30,
+                        ax=axs[0, i_col],
+                    )
+                    # colorbar label doubles as the figure title
+                    cbar.set_label(column)
+                    cbar.ax.xaxis.set_label_position("top")
+                else:
+                    axs[0, i_col].legend(
+                                handles=handles,
+                                labels=labels,
+                                loc="lower center",
+                                bbox_to_anchor=(0.5, 0.0),
+                                frameon=False,
+                                title=column,
+                    )
 
     # return the plot elements for manual post-processing
     return fig, axs
@@ -705,6 +740,8 @@ def plot_avg_per_pixel(
     axs[1].set_box_aspect(1)
     axs[1].set_ylabel("mean(values)")
     axs[1].set_xlabel("axis coordinate")
+    axs[1].xaxis.set_minor_locator(MultipleLocator(100))
+    axs[1].tick_params(which="minor",length=2)
     axs[1].legend()
 
     return fig, axs
@@ -716,9 +753,10 @@ def plot_violin(
     inner: str = None,
     fill: bool = False,
     cut: int = 0,
-    log_scale: tuple[bool, bool] = (False, True),
+    log_scale: bool | Sequence[bool] = False,
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
+    figsize = None,
 ) -> tuple[Figure, list[Axes]]:
     """
     Violin plots for one or more columns in adata.obs.
@@ -749,8 +787,20 @@ def plot_violin(
         plot_kwargs = {}
 
     ncols = len(columns)
-    fig, axs = plt.subplots(nrows=1, ncols=ncols, squeeze=False, **subplot_kwargs)
+    
+    if figsize is None:
+        figsize = (2*ncols,4)
+    fig, axs = plt.subplots(nrows=1, ncols=ncols, squeeze=False, figsize=figsize, **subplot_kwargs)
     color_cycle = itertools.cycle(plt.get_cmap("tab10").colors)  # noqa
+
+    if isinstance(log_scale, bool):
+        log_scale = (log_scale,) * ncols
+    else:
+        if len(log_scale) != len(columns):
+            raise ValueError(
+                f"Length of log_scale must match number of columns to plot."
+            )
+    
     for i, column in enumerate(columns):
         color = next(color_cycle)
         sns.violinplot(
@@ -759,7 +809,7 @@ def plot_violin(
             inner=inner,
             fill=fill,
             cut=cut,
-            log_scale=log_scale,
+            log_scale=(False,log_scale[i]),
             ax=axs[0, i],
             **plot_kwargs,
         )
@@ -776,6 +826,8 @@ def plot_violin(
         axs[0, i].spines["bottom"].set_visible(False)
         axs[0, i].spines["left"].set_visible(True)
         axs[0, i].set_title(column)
+        
+    fig.tight_layout()
     return fig, axs
 
 
@@ -783,7 +835,7 @@ def plot_ncell_per_condition(
     adata: ad.AnnData,
     columns: str | list,
     offset_between_conditions: int | list = 1,
-    palette: ColorType = None,
+    palette: ColorType | dict[str, str] = None,
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
     text_kwargs: dict = None,
@@ -822,19 +874,31 @@ def plot_ncell_per_condition(
     if text_kwargs is None:
         text_kwargs = {}
 
-    # sure a separator that is unlikely to be used already
+    # # sure a separator that is unlikely to be used already
     endash = "–"
+    col_orders = []
+    for col in columns:
+        series = adata.obs[col]
+        if hasattr(series, "cat"):
+            col_orders.append(series.cat.categories.tolist())
+        else:
+            unique_vals = series.astype(str).unique()
+            col_orders.append(sorted(unique_vals, key=natsort_keygen()))
+    
+    full_index = [endash.join(combo) for combo in itertools.product(*col_orders)]
     ncell = (
         adata.obs[columns]
         .astype(str)
         .agg(endash.join, axis=1)
         .value_counts()
-        .fillna(0)
-        .sort_index(key=natsort_keygen())
+        .reindex(full_index, fill_value=0)
     )
+    
     x = []
     y = []
     labels = []
+    if isinstance(palette,dict):
+        idx2color = {}
     i = 0
     last = None
     for idx, val in ncell.items():
@@ -858,8 +922,14 @@ def plot_ncell_per_condition(
                     last = idx_sep
                     break
         x.append(i)
+        if isinstance(palette,dict):
+            idx2color[i] = palette[idx]
         i += 1
+        
 
+    if isinstance(palette,dict):
+        palette = idx2color
+        
     fig, ax = plt.subplots(**subplot_kwargs)
     sns.barplot(
         x=x,
@@ -918,14 +988,27 @@ def plot_value_distribution(
         array = adata.X
     else:
         array = adata.layers[layer]
-    if isinstance(array, sp.csr_matrix):
-        array = array.toarray()
     if subplot_kwargs is None:
         subplot_kwargs = {}
     if plot_kwargs is None:
         plot_kwargs = {}
 
-    values, counts = np.unique(array, return_counts=True, sorted=True)
+    if isinstance(array, sp.csr_matrix):
+        data = array.data
+        values, counts = np.unique(data, return_counts=True)
+    
+        total_elements = array.shape[0] * array.shape[1]
+        num_zeros = total_elements - len(data)
+        
+        if num_zeros > 0:
+            values = np.concatenate([[0], values])
+            counts = np.concatenate([[num_zeros], counts])
+        
+        # Sort by value
+        sort_idx = np.argsort(values)
+        values, counts = values[sort_idx], counts[sort_idx]
+    else:
+        values, counts = np.unique(array, return_counts=True, sorted=True)
     log_counts = np.log10(counts)
     x_min = np.quantile(values, min_quantile)
     x_max = np.quantile(values, max_quantile)
