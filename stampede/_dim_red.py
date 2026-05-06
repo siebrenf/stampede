@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 import anndata as ad
 import matplotlib.patches as mpatches
+from matplotlib.ticker import MultipleLocator
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -103,6 +104,9 @@ def plot_scree(adata: ad.AnnData, obsm_key: str = None) -> tuple[Figure, Axes]:
     ax.set_ylabel("Explained variance ratio")
     ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
     ax.set_ylim(0, ax.get_ylim()[1])
+    ax.set_xlim(0, ax.get_xlim()[1])
+    ax.xaxis.set_minor_locator(MultipleLocator(1))
+    ax.tick_params(which="minor", length=2)
 
     return fig, ax
 
