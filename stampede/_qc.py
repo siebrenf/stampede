@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import itertools
 import os
-from collections.abc import Iterable
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 import anndata as ad
 import matplotlib.pyplot as plt
@@ -15,15 +14,16 @@ from matplotlib.axes import Axes
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
-from matplotlib.typing import ColorType
 from matplotlib.ticker import MultipleLocator
+from matplotlib.typing import ColorType
 from natsort import natsort_keygen, natsorted
 
 
-def slide_qc(adata: ad.AnnData,
-             slides: dict,
-             data_dir: str = None,
-             add_str_cols = None,
+def slide_qc(
+    adata: ad.AnnData,
+    slides: dict,
+    add_cols: Iterable | str = None,
+    data_dir: str = None,
 ) -> None:
     """
     Use the fov_positions file to create a dataframe with metadata columns per slide
@@ -36,6 +36,7 @@ def slide_qc(adata: ad.AnnData,
         slides: a dictionary with the slide number as keys, and a dictionary as values.
           The value dict must contain keys "exprmat" and "metadata", with should map to
           matching respective files
+        add_cols: additional columns to visualize (e.g. conditions)
         data_dir: optional filepath prefix (default: "")
 
     Returns:
@@ -43,6 +44,10 @@ def slide_qc(adata: ad.AnnData,
     """
     if data_dir is None:
         data_dir = ""
+    if add_cols is None:
+        add_cols = []
+    elif isinstance(add_cols, str):
+        add_cols = [add_cols]
     # add a composite column to adata.obs if it does not exist
     if "slide-fov" not in adata.obs.columns:
         adata.obs["slide-fov"] = (
@@ -76,7 +81,7 @@ def slide_qc(adata: ad.AnnData,
         right=adata.obs["slide-fov"].value_counts().rename("nCell"),
         on="slide-fov",
     )
-    fov_df["meanCountsPerCell"] = fov_df["nCounts"] / fov_df["nCell"]
+    fov_df["mean_CountsPerCell"] = fov_df["nCounts"] / fov_df["nCell"]
     fov_df["nCount_negprobes"] = adata.obs.groupby("slide-fov", observed=True)[
         "nCount_negprobes"
     ].sum()
@@ -87,7 +92,7 @@ def slide_qc(adata: ad.AnnData,
     fov_df["mean_FalseCode-CountsPerCell"] = (
         fov_df["nCount_falsecode"] / fov_df["nCell"]
     )
-    fov_df["meanCellSize"] = (
+    fov_df["mean_CellSize"] = (
         adata.obs.groupby("slide-fov", observed=False)["Area.um2"].sum()
         / fov_df["nCell"]
     )
@@ -104,12 +109,12 @@ def slide_qc(adata: ad.AnnData,
             .replace({"Pass": "0", "Fail": "1"})
             .astype(int)
         )
+    for col in add_cols:
+        # Take most-occurring value in col per slide-fov:
+        fov_df[col] = adata.obs.groupby("slide-fov", observed=False)[col].agg(
+            lambda val: val.mode()[0]
+        )
 
-    if add_str_cols is not None:
-        for col in add_str_cols:
-            # Take most-occuring value in col per slide-fov:
-            fov_df[col] = adata.obs.groupby("slide-fov", observed=False)[col].agg(lambda x: x.mode()[0])
-    
     adata.uns["fov_metadata"] = fov_df
 
     # determine the dimensions of the camera's FOV
@@ -133,7 +138,7 @@ def gene_qc(
     adata: ad.AnnData,
     mult: int | float = 1,
     noise_threshold: float | Iterable = None,
-    overwrite: bool = False,
+    overwrite: bool = True,
 ) -> None:
     r"""
     Add QC parameters to adata.var.
@@ -151,11 +156,11 @@ def gene_qc(
 
     Args:
         adata: an adata object
-        noise_threshold: manually specify the mimimum meanTranscript threshold.
+        noise_threshold: manually specify the mimimum mean_Transcript threshold.
          If None, use the filter specified above.
         mult: if noise_threshold is None, mult is used in the noise
          threshold computation specified above.
-        overwrite: overwrite existing qc columns (default: False)
+        overwrite: overwrite existing qc columns
 
     Returns:
         Nothing, updates adata.var
@@ -170,15 +175,44 @@ def gene_qc(
         adata.var["pctCell"] = 100 * adata.var["nCell"] / adata.n_obs
     if "nTranscript" not in adata.var.columns or overwrite:
         adata.var["nTranscript"] = np.array(adata.X.sum(axis=0)).ravel()
-    if "meanTranscript" not in adata.var.columns or overwrite:
-        adata.var["meanTranscript"] = adata.var["nTranscript"] / adata.n_obs
-    # if "signal2noise" not in adata.var.columns or overwrite:
+    if "mean_Transcript" not in adata.var.columns or overwrite:
+        adata.var["mean_Transcript"] = adata.var["nTranscript"] / adata.n_obs
     if "above_noise" not in adata.var.columns or overwrite:
         if noise_threshold is None:
-            negctrls = adata.var.loc[adata.var["is_negctrl"], "meanTranscript"]
-            noise_threshold = negctrls.mean() + mult * negctrls.std()
-            # adata.var["signal2noise"] = adata.var["meanTranscript"] / signal2noise_threshold
-        adata.var["above_noise"] = adata.var["meanTranscript"] > noise_threshold
+            negctrls = adata.var.loc[adata.var["is_negctrl"], "mean_Transcript"]
+            mean = negctrls.mean()
+            std = negctrls.std()
+            noise_threshold = mean + mult * std
+            adata.uns["noise_values"] = {
+                "mean": mean,
+                "std": std,
+                "mult": mult,
+                "threshold": noise_threshold,
+            }
+        adata.var["above_noise"] = adata.var["mean_Transcript"] > noise_threshold
+
+
+def plot_noise_threshold(adata, bins=50, **kwargs):
+    fig, ax = plot_column_distribution(
+        adata,
+        "mean_Transcript",
+        plot_kwargs={"bins": bins, "label": "mean transcripts"},
+        **kwargs,
+    )
+    ax.axvline(
+        adata.uns["noise_values"]["mean"], color="red", ls="--", label="mean noise"
+    )
+    ax.axvline(
+        adata.uns["noise_values"]["threshold"], color="red", label="noise threshold"
+    )
+    ax.legend()
+
+    title = ax.get_title()
+    t = int(adata.var["above_noise"].value_counts()[True])
+    n = len(adata.var)
+    ax.set_title(title + f"\n {t:_}/{n:_} genes passed threshold")
+
+    return fig, ax
 
 
 def gene_qc_postfilter(adata: ad.AnnData) -> None:
@@ -302,23 +336,24 @@ def plot_slide_qc(
     )
     fig.supylabel("y", x=1.0, ha="right", rotation=0)
     fig.supxlabel("x")
-    
+
     for i_col, column in enumerate(qc_columns):
         if pd.api.types.is_numeric_dtype(fov_df[column]):
             # normalize the colormap for all slides at once
             norm = Normalize(vmin=fov_df[column].min(), vmax=fov_df[column].max())
-            palette="coolwarm"
-            show_legend=False
+            palette = "coolwarm"
+            show_legend = False
         else:
             norm = None
             palette = "tab10"
-            show_legend=True
+            show_legend = True
 
         axs[0, i_col].axis("off")
-        
+
+        handles, labels = [], []
         for i_row, slide in enumerate(slides):
-            ax = axs[i_row+1, i_col]
-            
+            ax = axs[i_row + 1, i_col]
+
             # main plot
             sns.scatterplot(
                 data=fov_df[fov_df["slide"] == slide],
@@ -363,12 +398,12 @@ def plot_slide_qc(
                     cbar.ax.xaxis.set_label_position("top")
                 else:
                     axs[0, i_col].legend(
-                                handles=handles,
-                                labels=labels,
-                                loc="lower center",
-                                bbox_to_anchor=(0.5, 0.0),
-                                frameon=False,
-                                title=column,
+                        handles=handles,
+                        labels=labels,
+                        loc="lower center",
+                        bbox_to_anchor=(0.5, 0.0),
+                        frameon=False,
+                        title=column,
                     )
 
     # return the plot elements for manual post-processing
@@ -460,10 +495,12 @@ def plot_2d_correlations(
     log1p_ycolumn: bool = False,
     color_xcolumn: ColorType = None,
     color_ycolumn: ColorType = None,
-    cmap_2d: ColorType = None,
-    bins_1d: str | int = 50,
-    bins_2d: str | int = None,
-    stat: str = None,
+    cmap_2d: ColorType = "Blues",
+    min_quantile: float = 0.0,
+    max_quantile: float = 0.99,
+    bins_1d: str | int = "auto",
+    bins_2d: str | int = "auto",
+    stat: str = "percent",
     figsize: tuple = (8, 7),
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
@@ -475,15 +512,16 @@ def plot_2d_correlations(
         adata: an adata object
         xcolumn: columns in adata.obs to plot on the x-axis
         ycolumn: columns in adata.obs to plot on the y-axis
-        log1p_xcolumn: normalize the xcolumn? (default: False)
-        log1p_ycolumn: normalize the ycolumn? (default: False)
+        log1p_xcolumn: normalize the xcolumn?
+        log1p_ycolumn: normalize the ycolumn?
         color_xcolumn: color of the xcolumn plot
         color_ycolumn: color of the ycolumn plot
-        cmap_2d: colormap of the 2d correlation plot (default: "Blues")
+        cmap_2d: colormap of the 2d correlation plot
+        min_quantile: lowest quantile of values to plot
+        max_quantile: highest quantile of values to plot
         bins_1d: number of bins on the 1-dimensional histogram plots
         bins_2d: number of bins on the 2-dimensional histogram plot
         stat: which statistic to plot, see sns.histplot for more details
-         (default: "percent")
         figsize: figure size
         subplot_kwargs: kwargs passed to plt.subplots
         plot_kwargs: kwargs passed to the main plotting function
@@ -491,14 +529,6 @@ def plot_2d_correlations(
     Returns:
         matplotlib figure and array of axes
     """
-    if cmap_2d is None:
-        cmap_2d = "Blues"
-    if bins_1d is None:
-        bins_1d = "auto"
-    if bins_2d is None:
-        bins_2d = "auto"
-    if stat is None:
-        stat = "percent"
     if subplot_kwargs is None:
         subplot_kwargs = {}
     if plot_kwargs is None:
@@ -518,7 +548,15 @@ def plot_2d_correlations(
         **subplot_kwargs,
     )
 
+    x = adata.obs[xcolumn]
+    x_min = np.quantile(x, min_quantile)
+    x_max = np.quantile(x, max_quantile)
     y = adata.obs[ycolumn]
+    y_min = np.quantile(y, min_quantile)
+    y_max = np.quantile(y, max_quantile)
+    keep = adata.obs[x.between(x_min, x_max) & y.between(y_min, y_max)].index
+
+    y = y.loc[keep]
     ylabel = ycolumn
     if log1p_ycolumn:
         y = np.log1p(y)
@@ -532,6 +570,7 @@ def plot_2d_correlations(
         alpha=0.5,
         **plot_kwargs,
     )
+    axs[0, 0].set_ylim(y_min, y_max)
     axs[0, 0].invert_xaxis()
     axs[0, 0].yaxis.tick_right()
     axs[0, 0].xaxis.tick_top()
@@ -539,7 +578,7 @@ def plot_2d_correlations(
     # axs[0, 0].yaxis.set_label_position("right")
     axs[0, 0].set_ylabel(ylabel)
 
-    x = adata.obs[xcolumn]
+    x = x.loc[keep]
     xlabel = xcolumn
     if log1p_xcolumn:
         x = np.log1p(x)
@@ -553,6 +592,7 @@ def plot_2d_correlations(
         alpha=0.5,
         **plot_kwargs,
     )
+    axs[1, 1].set_xlim(x_min, x_max)
     axs[1, 1].invert_yaxis()
     axs[1, 1].xaxis.tick_top()
     axs[1, 1].yaxis.tick_right()
@@ -572,6 +612,8 @@ def plot_2d_correlations(
     )
     axs[0, 1].set_xlabel(None)
     axs[0, 1].set_ylabel(None)
+    axs[0, 1].set_xlim(x_min, x_max)
+    axs[0, 1].set_ylim(y_min, y_max)
     # axs[0, 1].set_xlabel(xlabel)
     # axs[0, 1].xaxis.set_label_position("top")
     # axs[0, 1].set_ylabel(ylabel)
@@ -599,11 +641,11 @@ def plot_2d_correlations(
 def plot_avg_per_pixel(
     adata: ad.AnnData,
     column: str,
-    fill_cell_area: bool = False,
+    fill_cell_area: bool = True,
     normalize_cell_area: bool = True,  # causes edge effects
     log1p: bool = False,
-    cmap: ColorType = None,
-    background_color: ColorType = None,
+    cmap: ColorType = "gist_rainbow",
+    background_color: ColorType = "black",
     figsize: tuple = (20, 15),
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
@@ -629,14 +671,17 @@ def plot_avg_per_pixel(
     Returns:
         matplotlib figure and array of axes
     """
-    if cmap is None:
-        cmap = "gist_rainbow"
-    if background_color is None:
-        background_color = "black"
     if subplot_kwargs is None:
         subplot_kwargs = {}
     if plot_kwargs is None:
         plot_kwargs = {}
+    # colorbar label
+    label = column
+    if normalize_cell_area:
+        label = f"{label}/cell area"
+    label = f"mean({label})"
+    if log1p:
+        label = f"log1p({label})"
 
     # create a 2D array with the average values
     x_max = adata.uns["fov_dims_px"]["x"]
@@ -707,15 +752,16 @@ def plot_avg_per_pixel(
     axs[0].set_box_aspect(1)
     axs[0].xaxis.set_ticks(np.arange(0, x_max, (x_max // 2000) * 100))
     axs[0].yaxis.set_ticks(np.arange(0, y_max, (y_max // 2000) * 100))
+    axs[0].yaxis.set_minor_locator(MultipleLocator(100))
     axs[0].xaxis.tick_top()
-    axs[0].xaxis.set_tick_params(rotation=45)
+    axs[0].xaxis.set_minor_locator(MultipleLocator(100))
+    axs[0].xaxis.set_tick_params(rotation=45, which="minor", length=2)
     axs[0].xaxis.set_label_position("top")
     axs[0].set_xlabel("x")
     axs[0].set_ylabel("y")
 
     # colorbar
     norm = Normalize(vmin=vmin, vmax=vmax)
-    label = f"{'log1p(' if log1p else ''}mean({column}){')' if log1p else ''}/pixel"
     fig.colorbar(
         im,
         cmap=cmap,
@@ -729,19 +775,35 @@ def plot_avg_per_pixel(
     )
 
     # Lineplot
-    axs[1].set_title(f"Mean of values per row/column")
+    axs[1].set_title(f"Average values per row/column")
     x_average = np.average(grid, axis=0)
+    x_stdev = np.std(grid, axis=0)
     y_average = np.average(grid, axis=1)
+    y_stdev = np.std(grid, axis=1)
     max_average = max(max(y_average), max(x_average))
-    axs[1].set_xlim(-x_max * 0.02, x_max * 1.02)
+    axs[1].set_xlim(0, max(x_max, y_max))
     axs[1].set_ylim(-max_average * 0.02, max_average * 1.02)
-    axs[1].plot(x_average, label="x")
-    axs[1].plot(y_average, label="y")
+    axs[1].plot(x_average, label="mean x-axis")
+    axs[1].fill_between(
+        range(len(x_average)),
+        x_average - x_stdev,
+        x_average + x_stdev,
+        alpha=0.2,
+        label="std x-axis",
+    )
+    axs[1].plot(y_average, label="mean y-axis")
+    axs[1].fill_between(
+        range(len(y_average)),
+        y_average - y_stdev,
+        y_average + y_stdev,
+        alpha=0.2,
+        label="std y-axis",
+    )
     axs[1].set_box_aspect(1)
-    axs[1].set_ylabel("mean(values)")
+    axs[1].set_ylabel(label)
     axs[1].set_xlabel("axis coordinate")
     axs[1].xaxis.set_minor_locator(MultipleLocator(100))
-    axs[1].tick_params(which="minor",length=2)
+    axs[1].tick_params(which="minor", length=2)
     axs[1].legend()
 
     return fig, axs
@@ -750,13 +812,13 @@ def plot_avg_per_pixel(
 def plot_violin(
     adata: ad.AnnData,
     columns: str | list,
-    inner: str = None,
+    inner: str = "quart",
     fill: bool = False,
     cut: int = 0,
     log_scale: bool | Sequence[bool] = False,
+    figsize: tuple = None,
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
-    figsize = None,
 ) -> tuple[Figure, list[Axes]]:
     """
     Violin plots for one or more columns in adata.obs.
@@ -767,10 +829,11 @@ def plot_violin(
     Args:
         adata: an adata object
         columns: one or more column in adata.obs
-        inner: See sns.violinplot for more details.
-        fill: See sns.violinplot for more details.
-        cut: See sns.violinplot for more details.
-        log_scale: See sns.violinplot for more details.
+        inner: See sns.violinplot for more details
+        fill: See sns.violinplot for more details
+        cut: See sns.violinplot for more details
+        log_scale: See sns.violinplot for more details
+        figsize: tuple of figure, will be multiplied by the number of plots
         subplot_kwargs: kwargs passed to plt.subplots
         plot_kwargs: kwargs passed to the main plotting function
 
@@ -779,18 +842,18 @@ def plot_violin(
     """
     if isinstance(columns, str):
         columns = [columns]
-    if inner is None:
-        inner = "quart"
     if subplot_kwargs is None:
         subplot_kwargs = {}
     if plot_kwargs is None:
         plot_kwargs = {}
 
     ncols = len(columns)
-    
+
     if figsize is None:
-        figsize = (2*ncols,4)
-    fig, axs = plt.subplots(nrows=1, ncols=ncols, squeeze=False, figsize=figsize, **subplot_kwargs)
+        figsize = (2 * ncols, 4)
+    fig, axs = plt.subplots(
+        nrows=1, ncols=ncols, squeeze=False, figsize=figsize, **subplot_kwargs
+    )
     color_cycle = itertools.cycle(plt.get_cmap("tab10").colors)  # noqa
 
     if isinstance(log_scale, bool):
@@ -800,7 +863,7 @@ def plot_violin(
             raise ValueError(
                 f"Length of log_scale must match number of columns to plot."
             )
-    
+
     for i, column in enumerate(columns):
         color = next(color_cycle)
         sns.violinplot(
@@ -809,7 +872,7 @@ def plot_violin(
             inner=inner,
             fill=fill,
             cut=cut,
-            log_scale=(False,log_scale[i]),
+            log_scale=(False, log_scale[i]),
             ax=axs[0, i],
             **plot_kwargs,
         )
@@ -826,7 +889,7 @@ def plot_violin(
         axs[0, i].spines["bottom"].set_visible(False)
         axs[0, i].spines["left"].set_visible(True)
         axs[0, i].set_title(column)
-        
+
     fig.tight_layout()
     return fig, axs
 
@@ -835,7 +898,7 @@ def plot_ncell_per_condition(
     adata: ad.AnnData,
     columns: str | list,
     offset_between_conditions: int | list = 1,
-    palette: ColorType | dict[str, str] = None,
+    palette: ColorType | dict[str, str] = "terrain",
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
     text_kwargs: dict = None,
@@ -865,8 +928,6 @@ def plot_ncell_per_condition(
                 f"{offset_between_conditions=} must be a value, "
                 "or a list of values of len(columns)-1"
             )
-    if palette is None:
-        palette = "terrain"
     if subplot_kwargs is None:
         subplot_kwargs = {}
     if plot_kwargs is None:
@@ -874,7 +935,7 @@ def plot_ncell_per_condition(
     if text_kwargs is None:
         text_kwargs = {}
 
-    # # sure a separator that is unlikely to be used already
+    # use a separator that is unlikely to be in the data
     endash = "–"
     col_orders = []
     for col in columns:
@@ -884,7 +945,7 @@ def plot_ncell_per_condition(
         else:
             unique_vals = series.astype(str).unique()
             col_orders.append(sorted(unique_vals, key=natsort_keygen()))
-    
+
     full_index = [endash.join(combo) for combo in itertools.product(*col_orders)]
     ncell = (
         adata.obs[columns]
@@ -893,12 +954,11 @@ def plot_ncell_per_condition(
         .value_counts()
         .reindex(full_index, fill_value=0)
     )
-    
+
     x = []
     y = []
     labels = []
-    if isinstance(palette,dict):
-        idx2color = {}
+    idx2color = {}
     i = 0
     last = None
     for idx, val in ncell.items():
@@ -922,14 +982,13 @@ def plot_ncell_per_condition(
                     last = idx_sep
                     break
         x.append(i)
-        if isinstance(palette,dict):
+        if isinstance(palette, dict):
             idx2color[i] = palette[idx]
         i += 1
-        
 
-    if isinstance(palette,dict):
+    if isinstance(palette, dict):
         palette = idx2color
-        
+
     fig, ax = plt.subplots(**subplot_kwargs)
     sns.barplot(
         x=x,
@@ -966,7 +1025,7 @@ def plot_value_distribution(
     adata: ad.AnnData,
     layer: str = None,
     min_quantile: float = 0.0,
-    max_quantile: float = 0.95,
+    max_quantile: float = 0.99,
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
 ) -> tuple[Figure, list[Axes]]:
@@ -976,8 +1035,8 @@ def plot_value_distribution(
     Args:
         adata: an adata object.
         layer: the layer the values are drawn from (default: X)
-        min_quantile: lowest quantile of values to plot (default: 0.00)
-        max_quantile: highest quantile of values to plot (default: 0.95)
+        min_quantile: lowest quantile of values to plot
+        max_quantile: highest quantile of values to plot
         subplot_kwargs: kwargs passed to plt.subplots
         plot_kwargs: kwargs passed to the main plotting function
 
@@ -996,14 +1055,14 @@ def plot_value_distribution(
     if isinstance(array, sp.csr_matrix):
         data = array.data
         values, counts = np.unique(data, return_counts=True)
-    
+
         total_elements = array.shape[0] * array.shape[1]
         num_zeros = total_elements - len(data)
-        
+
         if num_zeros > 0:
             values = np.concatenate([[0], values])
             counts = np.concatenate([[num_zeros], counts])
-        
+
         # Sort by value
         sort_idx = np.argsort(values)
         values, counts = values[sort_idx], counts[sort_idx]
@@ -1040,10 +1099,10 @@ def plot_column_distribution(
     column: str,
     axis: int = None,
     min_quantile: float = 0.0,
-    max_quantile: float = 0.95,
+    max_quantile: float = 0.99,
     subplot_kwargs: dict = None,
     plot_kwargs: dict = None,
-) -> tuple[Figure, list[Axes]]:
+) -> tuple[Figure, Axes]:
     """
     Plot the distribution of values for a column present in either adata.obs or
     adata.var.
@@ -1053,7 +1112,7 @@ def plot_column_distribution(
         column: a column in either adata.obs or adata.var
         axis: specify if the column name is present in both obs (0) and var (1).
         min_quantile: lowest quantile of values to plot (default: 0.00)
-        max_quantile: highest quantile of values to plot (default: 0.95)
+        max_quantile: highest quantile of values to plot (default: 0.99)
         subplot_kwargs: kwargs passed to plt.subplots
         plot_kwargs: kwargs passed to the main plotting function
 
@@ -1082,11 +1141,11 @@ def plot_column_distribution(
 
     x_min = series.quantile(min_quantile)
     x_max = series.quantile(max_quantile)
-    x_pad = (x_max - x_min) * 0.02
+    series = series[series.between(x_min, x_max)]
 
     fig, ax = plt.subplots(**subplot_kwargs)
     sns.histplot(series, ax=ax, **plot_kwargs)
-    ax.set_xlim(x_min - x_pad, x_max + x_pad)
+    ax.set_xlim(x_min, x_max)
     ax.set_title(f"Distribution of {column} over all {unit}")
 
     return fig, ax

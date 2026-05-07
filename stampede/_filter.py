@@ -12,7 +12,6 @@ def filter_genes(
     ncell_max: int = float("inf"),
     ntranscript_min: int = 0,
     ntranscript_max: int = float("inf"),
-    # signal2noise_threshold: float = 1.0,
     filter_columns: str | list = None,
     verbose: bool = True,
 ) -> ad.AnnData:
@@ -25,7 +24,6 @@ def filter_genes(
         ncell_max: maximum number of cells the gene is found in.
         ntranscript_min: minimum number of transcripts the gene must have.
         ntranscript_max: maximum number of transcripts the gene must have.
-        # signal2noise_threshold: the minimum signal-to-noise ratio the gene must have.
         filter_columns: a list of additional columns to filter by.
          Columns by (convertible to) boolean, where False values are removed.
         verbose: provide written feedback (default: True)
@@ -40,7 +38,7 @@ def filter_genes(
     adata.strings_to_categoricals()
     filter_columns = [adata.obs[col] for col in filter_columns]
 
-    required_cols = ["nCell","nTranscript","above_noise","is_negctrl","is_sysctrl"]
+    required_cols = ["nCell", "nTranscript", "above_noise", "is_negctrl", "is_sysctrl"]
     missing = [col for col in required_cols if col not in adata.var.columns]
     if missing:
         raise ValueError(
@@ -81,7 +79,7 @@ def filter_cells(
     area_min: int = 25,
     area_max: int = 100,
     filter_columns: list = None,
-    filter_internalqc = False,
+    filter_internalqc=False,
     verbose: bool = True,
 ) -> ad.AnnData:
     """
@@ -98,6 +96,7 @@ def filter_cells(
         area_max: maximum area (in pixels) the cell must have
         filter_columns: a list of additional columns to filter by.
          Columns by (convertible to) boolean, where False values are removed.
+        filter_internalqc: filter by columns `qcCellsPassed` and `qcFlagsFOV`.
         verbose: provide written feedback (default: True)
 
     Returns:

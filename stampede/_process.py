@@ -5,7 +5,6 @@ from collections.abc import Iterable
 import anndata as ad
 import numpy as np
 import pandas as pd
-import scanpy as sc
 import scipy.sparse as sp
 from natsort import natsorted
 
@@ -42,9 +41,7 @@ def binarize(adata: ad.AnnData, verbose: bool = True) -> None:
 def knn_count_smoothing(
     adata: ad.AnnData,
     layer_added: str = None,
-    neighbors_use_rep: str = None,
-    neighbors_key_added: str = None,
-    neighbors_kwargs: dict = None,
+    neighbors_key: str = "neighbors",
     verbose: bool = True,
 ) -> None:
     """
@@ -56,9 +53,7 @@ def knn_count_smoothing(
     Args:
         adata: adata object
         layer_added: key in adata.layers for function output (default: "KNN_binary_mean")
-        neighbors_use_rep: See sc.pp.neighbors for details
-        neighbors_key_added: See sc.pp.neighbors for details
-        neighbors_kwargs: kwargs passed to sc.pp.neighbors
+        neighbors_key: See sc.pp.neighbors for details
         verbose: provide written feedback (default: True)
 
     Returns:
@@ -70,33 +65,17 @@ def knn_count_smoothing(
             f"{layer=} not found in adata.layers. Please run st.pp.binarize first!"
         )
 
-    if neighbors_use_rep is None:
-        neighbors_use_rep = "X_svd"
-    if neighbors_use_rep != "X" and neighbors_use_rep not in adata.obsm:
-        raise KeyError(
-            f"{neighbors_use_rep=} not found in adata.obsm. "
-            "Please run st.pp.dim_red (or a similar function) first!"
-        )
-
-    if neighbors_key_added is None:
-        neighbors_key_added = "neighbors_svd"
-    if neighbors_kwargs is None:
-        neighbors_kwargs = {}
-    connectivities = f"{neighbors_key_added}_connectivities"
-    if connectivities not in adata.obsp:
-        if verbose:
-            print("running sc.pp.neighbors")
-        sc.pp.neighbors(
-            adata,
-            use_rep=neighbors_use_rep,
-            key_added=neighbors_key_added,
-            **neighbors_kwargs,
+    if neighbors_key not in adata.uns:
+        raise ValueError(
+            f"{neighbors_key=} not found. "
+            "Please run sc.pp.neighbors with the correct `use_rep`"
         )
 
     if layer_added is None:
         layer_added = f"KNN_{layer}_mean"
     if layer_added not in adata.layers:
         # KNN neighborhood connectivity map
+        connectivities = f"{neighbors_key}_connectivities"
         knn = adata.obsp[connectivities].copy()
         knn.data = np.ones_like(knn.data)
         knn.setdiag(1)  # include self

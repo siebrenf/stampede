@@ -4,12 +4,12 @@ from collections.abc import Iterable
 
 import anndata as ad
 import matplotlib.patches as mpatches
-from matplotlib.ticker import MultipleLocator
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.ticker import MultipleLocator
 from matplotlib.typing import ColorType
 from sklearn.decomposition import TruncatedSVD
 
@@ -17,7 +17,7 @@ from sklearn.decomposition import TruncatedSVD
 def dim_red(
     adata: ad.AnnData,
     n_dims: int = 50,
-    key_added: str = None,
+    key_added: str = "X_svd",
     random_state: int = 42,
 ) -> None:
     """
@@ -26,14 +26,12 @@ def dim_red(
     Args:
         adata: adata object
         n_dims: number of PCs to use (default: 50)
-        key_added: key in adata.obsm for function output (default: "X_svd")
+        key_added: key in adata.obsm for function output
         random_state: random seed value
 
     Returns:
         Nothing, updates adata.obsm and adata.uns
     """
-    if key_added is None:
-        key_added = "X_svd"
     prefix, uns_key = key_added.split("_", 1)
     if prefix != "X" or len(uns_key) == 0:
         raise ValueError(f"{key_added=} must start with 'X_', e.g. 'X_svd'")
@@ -153,7 +151,9 @@ def plot_dim_red(
         if subset_size:
             n = subset_size * len(data[c].unique())
             if len(data) > n:
-                df = data.groupby(c).sample(n=n, random_state=random_state)
+                df = data.groupby(c, observed=False).sample(
+                    n=n, random_state=random_state
+                )
         levels, categories = pd.factorize(df[c])
         colors = [cmap.colors[i] for i in levels]  # noqa
 
