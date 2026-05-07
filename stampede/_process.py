@@ -40,6 +40,7 @@ def binarize(adata: ad.AnnData, verbose: bool = True) -> None:
 
 def knn_count_smoothing(
     adata: ad.AnnData,
+    use_layer: str = "binary",
     layer_added: str = None,
     neighbors_key: str = "neighbors",
     verbose: bool = True,
@@ -52,6 +53,7 @@ def knn_count_smoothing(
 
     Args:
         adata: adata object
+        use_layer: layer to use for smoothing
         layer_added: key in adata.layers for function output (default: "KNN_binary_mean")
         neighbors_key: See sc.pp.neighbors for details
         verbose: provide written feedback (default: True)
@@ -59,11 +61,11 @@ def knn_count_smoothing(
     Returns:
         Nothing, updates adata.layers and adata.X
     """
-    layer = "binary"
-    if layer not in adata.layers:
-        raise KeyError(
-            f"{layer=} not found in adata.layers. Please run st.pp.binarize first!"
-        )
+    if use_layer not in adata.layers:
+        raise KeyError(f"{use_layer=} not found in adata.layers.")
+
+    if layer_added is None:
+        layer_added = f"KNN_{use_layer}_mean"
 
     if neighbors_key not in adata.uns:
         raise ValueError(
@@ -71,33 +73,28 @@ def knn_count_smoothing(
             "Please run sc.pp.neighbors with the correct `use_rep`"
         )
 
-    if layer_added is None:
-        layer_added = f"KNN_{layer}_mean"
-    if layer_added not in adata.layers:
-        # KNN neighborhood connectivity map
-        connectivities = f"{neighbors_key}_connectivities"
-        knn = adata.obsp[connectivities].copy()
-        knn.data = np.ones_like(knn.data)
-        knn.setdiag(1)  # include self
+    # KNN neighborhood connectivity map
+    connectivities = f"{neighbors_key}_connectivities"
+    knn = adata.obsp[connectivities].copy()
+    knn.data = np.ones_like(knn.data)
+    knn.setdiag(1)  # include self
 
-        # number of neighbors per cell + itself
-        deg = np.asarray(knn.sum(axis=1))
+    # number of neighbors per cell + itself
+    deg = np.asarray(knn.sum(axis=1))
 
-        # row-normalized connectivity map
-        knn = knn.multiply(1 / deg)  # coo_matrix
+    # row-normalized connectivity map
+    knn = knn.multiply(1 / deg)  # coo_matrix
 
-        # average gene presence across its neighborhood
-        X = adata.layers[layer]
-        data = knn.dot(X)
+    # average gene presence across its neighborhood
+    X = adata.layers[use_layer]
+    data = knn.dot(X)
 
-        # sanity checks
-        assert data.shape == X.shape
-        assert data.dtype == np.float32
-        assert isinstance(data, sp.csr_matrix)
+    # sanity checks
+    assert data.shape == X.shape
+    assert data.dtype == np.float32
+    assert isinstance(data, sp.csr_matrix)
 
-        adata.layers[layer_added] = data
-    elif verbose:
-        print(f"{layer_added} layer already set")
+    adata.layers[layer_added] = data
 
     adata.X = adata.layers[layer_added].copy()
     if verbose:
